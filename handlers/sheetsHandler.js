@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+const { google } = require('googleapis');
 
 const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 const auth = new google.auth.GoogleAuth({
@@ -8,7 +8,6 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID;
 
-// หัวตาราง 19 คอลัมน์ (ต้องตรงลำดับกับ row ด้านล่าง)
 const HEADERS = [
   'วันที่', 'Transaction ID', 'ประเภทเอกสาร', 'สถานะการจ่ายเงิน',
   'รายละเอียด', 'จำนวน', 'ราคาต่อหน่วย', 'ยอดรวมก่อนภาษี',
@@ -18,21 +17,19 @@ const HEADERS = [
 ];
 
 const THAI_MONTHS = [
-  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+  'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+  'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'
 ];
 
-// แปลงวันที่ DD/MM/YYYY -> ชื่อเดือนไทย
 function getThaiMonth(dateStr) {
   try {
-    const month = parseInt(dateStr.split('/')[1], 10); // เลขเดือน
+    const month = parseInt(dateStr.split('/')[1], 10);
     return THAI_MONTHS[month - 1] || 'อื่นๆ';
   } catch {
     return 'อื่นๆ';
   }
 }
 
-// สร้างแท็บเดือนถ้ายังไม่มี + ใส่หัวตาราง
 async function ensureMonthSheet(monthName) {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
   const exists = meta.data.sheets.some(s => s.properties.title === monthName);
@@ -44,7 +41,6 @@ async function ensureMonthSheet(monthName) {
         requests: [{ addSheet: { properties: { title: monthName } } }],
       },
     });
-    // ใส่หัวตารางแถวแรก
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `'${monthName}'!A1`,
@@ -54,36 +50,32 @@ async function ensureMonthSheet(monthName) {
   }
 }
 
-/**
- * บันทึกรายจ่าย 1 รายการลงแท็บเดือนที่ตรงกับวันที่
- * @param {Object} d ข้อมูลจาก Gemini + ลิงก์หลักฐาน
- */
-export async function appendExpense(d) {
+async function appendExpense(d) {
   const monthName = getThaiMonth(d.date);
   await ensureMonthSheet(monthName);
 
   const amount = Number(d.amount) || 0;
 
   const row = [
-    d.date || '',                 // A วันที่
-    d.txnId || '',                // B Transaction ID
-    'ใบรับรองแทนใบเสร็จ',          // C ประเภทเอกสาร (default)
-    'จ่ายแล้ว',                    // D สถานะ
-    d.description || '',          // E รายละเอียด
-    1,                            // F จำนวน
-    amount,                       // G ราคาต่อหน่วย
-    amount,                       // H ยอดรวมก่อนภาษี
-    0,                            // I ส่วนลด
-    0,                            // J หัก ณ ที่จ่าย
-    amount,                       // K ยอดสุทธิ
-    d.expenseType || '',          // L ประเภทค่าใช้จ่าย
-    d.category || '',             // M หมวดหมู่
-    d.subCategory || '',          // N หมวดหมู่ย่อย
-    d.payee || '',                // O ผู้ขาย
-    d.taxId || '',                // P เลขผู้เสียภาษี
-    '',                           // Q สาขา
-    d.evidenceLink || '',         // R ลิงก์หลักฐาน
-    '',                           // S หมายเหตุ
+    d.date || '',
+    d.txnId || '',
+    'ใบรับรองแทนใบเสร็จ',
+    'จ่ายแลว',
+    d.description || '',
+    1,
+    amount,
+    amount,
+    0,
+    0,
+    amount,
+    d.expenseType || '',
+    d.category || '',
+    d.subCategory || '',
+    d.payee || '',
+    d.taxId || '',
+    '',
+    d.evidenceLink || '',
+    '',
   ];
 
   await sheets.spreadsheets.values.append({
@@ -95,3 +87,5 @@ export async function appendExpense(d) {
 
   return monthName;
 }
+
+module.exports = { appendExpense };
