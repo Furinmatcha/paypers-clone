@@ -36,8 +36,8 @@ async function handleEvent(event, client) {
         messages: [{ type: 'text', text: '⏳ กำลังอ่านใบเสร็จ รอสักครู่...' }]
       })
 
-      const receipt = await readReceipt(base64Image)
-      const fileUrl = await uploadFile(imageBuffer, `receipt_${Date.now()}.jpg`)
+      const receipt = await readReceipt(imageBuffer); // ส่ง Buffer แทน
+      const fileUrl = await uploadFile(imageBuffer, `receipt_${Date.now()}.jpg`);
       receipt.fileUrl = fileUrl
       receipt.userId = userId
       await saveToSheets(receipt)
