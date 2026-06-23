@@ -1,41 +1,29 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai')
+const prompt = `
+คุณคือผู้ช่วยอ่านสลิป/ใบเสร็จของร้านกาแฟ "ฟูริน มัทฉะ"
+อ่านรูปแล้วตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น ห้ามมี markdown หรือ backtick
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-
-async function readReceipt(base64Image) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
-
-
-
-  const prompt = `อ่านใบเสร็จในรูปนี้แล้วตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น ห้ามมี markdown:
+รูปแบบ JSON:
 {
-  "shopName": "ชื่อร้านหรือบริษัท",
-  "date": "วันที่ในรูปแบบ DD/MM/YYYY ถ้าไม่มีให้ใส่วันนี้",
-  "total": "ยอดรวมตัวเลขอย่างเดียว ไม่มีสัญลักษณ์",
-  "items": "รายการสินค้าทั้งหมด คั่นด้วยจุลภาค",
-  "vat": "ภาษีมูลค่าเพิ่มตัวเลขอย่างเดียว ถ้าไม่มีใส่ 0",
-  "category": "หมวดหมู่ที่เหมาะสมที่สุด จากตัวเลือก: อาหาร, เครื่องดื่ม, ขนส่ง, อุปกรณ์สำนักงาน, สาธารณูปโภค, อื่นๆ"
-}`
-
-  const result = await model.generateContent([
-    prompt,
-    { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
-  ])
-
-  const text = result.response.text().replace(/```json|```/g, '').trim()
-
-  try {
-    return JSON.parse(text)
-  } catch {
-    return {
-      shopName: 'ไม่สามารถอ่านได้',
-      date: new Date().toLocaleDateString('th-TH'),
-      total: '0',
-      items: '-',
-      vat: '0',
-      category: 'อื่นๆ'
-    }
-  }
+  "date": "DD/MM/YYYY",
+  "payee": "ชื่อผู้รับเงิน (ช่องไปที่ หรือชื่อร้าน)",
+  "description": "สรุปสั้นๆ ว่าจ่ายค่าอะไร",
+  "amount": 0,
+  "taxId": "",
+  "expenseType": "",
+  "category": "",
+  "subCategory": ""
 }
 
-module.exports = { readReceipt }
+กฎสำคัญ:
+- วันที่: ถ้าเป็น พ.ศ. (ปี > 2500) ให้ลบ 543 เป็น ค.ศ. เช่น 05 มิ.ย. 69 = 05/06/2026
+- amount: เป็นตัวเลขล้วน ห้ามมีคอมม่า ห้ามมีหน่วย เช่น 38,000.00 = 38000 (ห้ามคูณ 100)
+- category: เดาจากบริบทร้านกาแฟ เลือกจาก: วัตถุดิบ, ค่าเช่า, อุปกรณ์, ค่าจ้าง, การตลาด, ค่าน้ำค่าไฟ, อื่นๆ
+- subCategory: หมวดย่อย เช่น ผงมัทฉะ, นม, แก้ว, ค่าเช่าร้าน ฯลฯ
+- expenseType: "ต้นทุนขาย" หรือ "ค่าใช้จ่ายดำเนินงาน"
+- ช่องไหนอ่านไม่ได้ ใส่ "" หรือ 0
+`;
+let raw = response.text(); // ข้อความที่ Gemini ตอบ
+// กันกรณีมี ```json ติดมา
+raw = raw.replace(/```json|```/g, '').trim();
+const data = JSON.parse(raw);
+return data; // { date, payee, description, amount, ... }
