@@ -107,3 +107,35 @@ async function mergeCertAndSlip(certPdf, slipImage) {
 }
 
 module.exports = { buildCertificatePdf, mergeCertAndSlip };
+import { PDFDocument } from 'pdf-lib';
+
+/**
+ * รวม PDF ใบรับรอง + รูปสลิป เป็นไฟล์เดียว
+ * @param {Buffer} certPdf - PDF ใบรับรองจากเฟส 3
+ * @param {Buffer} slipImage - รูปสลิป (jpg)
+ */
+export async function mergeCertAndSlip(certPdf, slipImage) {
+  const merged = await PDFDocument.create();
+
+  // หน้า 1: ใบรับรอง
+  const certDoc = await PDFDocument.load(certPdf);
+  const pages = await merged.copyPages(certDoc, certDoc.getPageIndices());
+  pages.forEach(p => merged.addPage(p));
+
+  // หน้า 2: สลิป
+  const img = await merged.embedJpg(slipImage); // ถ้าเป็น png ใช้ embedPng
+  const page = merged.addPage();
+  const { width, height } = page.getSize();
+  const scale = Math.min(width / img.width, height / img.height) * 0.85;
+  const w = img.width * scale;
+  const h = img.height * scale;
+  page.drawImage(img, {
+    x: (width - w) / 2,
+    y: (height - h) / 2,
+    width: w,
+    height: h,
+  });
+
+  return Buffer.from(await merged.save());
+}
+
