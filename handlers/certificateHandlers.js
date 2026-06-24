@@ -4,7 +4,7 @@ const { PDFDocument: LibPDF } = require('pdf-lib');
 
 const SHOP = {
   name: 'ฟูริน มัทฉะ',
-  address: '4/21 หมู่ 2 ติดอาคารซูเหลยน ตำบลเนินพระ อเภอเมือง ระยอง 21000',
+  address: '4/21 หมู่ 2 ติดอาคารซูเหลียน ตำบลเนินพระ อำเภอเมือง ระยอง 21000',
   taxId: '1219900781992',
   tel: '0946824466',
   issuer: 'Terapat Pechtumpai',
@@ -24,8 +24,8 @@ function buildCertificatePdf(d) {
     const amount = Number(d.amount) || 0;
     const amountStr = amount.toLocaleString('th-TH', { minimumFractionDigits: 2 });
 
-    doc.font('th-bold').fontSize(18).text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
-    doc.moveDown(1.5);
+    doc.font('th-bold').fontSize(20).text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
+    doc.moveDown(1);
 
     doc.font('th').fontSize(12);
     doc.text(`ผู้ซื้อ/ผู้รับบริการ: ${SHOP.name}`);
@@ -66,9 +66,9 @@ function buildCertificatePdf(d) {
     doc.x = 50;
     doc.font('th').fontSize(12).text(`รวมทั้งสิ้น (ตัวอักษร) ${bahttext(amount)}`);
     doc.moveDown(1);
-    doc.text(`ข้าพเจ้า ${SHOP.issuer} (ผู้เบกจ่าย)`);
+    doc.text(`ข้าพเจ้า ${SHOP.issuer} (ผู้เบิกจ่าย)`);
     doc.text(
-      `ขอรับรองว่า รายจ่ายข้างต้นนไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ ` +
+      `ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ ` +
       `และข้าพเจ้าได้จ่ายไปในงานของทางร้านค้า/กิจการเจ้าของคนเดียวโดยแท้ ` +
       `ตังแต่วันที่ ${d.date} ถึงวันที่ ${d.date}`
     );
