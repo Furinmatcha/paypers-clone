@@ -28,7 +28,7 @@ async function handleEvent(event, client) {
 
       await client.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: 'text', text: '🔄 กลังประมวลผล รอสกครู่...' }]
+        messages: [{ type: 'text', text: '🔄 กำลังประมวลผล รอสักครู่...' }]
       });
 
       // 1. อ่านสลิป
@@ -74,7 +74,7 @@ async function handleEvent(event, client) {
     const text = event.message.text.trim();
     await client.replyMessage({
       replyToken: event.replyToken,
-      messages: [{ type: 'text', text: '📸 ส่งรูปสลิปมาได้เลย แลวฉันจะบันทึกให้!' }]
+      messages: [{ type: 'text', text: '📸 ส่งรูปสลิปมาได้เลย แล้วฉันจะบันทึกให้!' }]
     });
   }
 }
