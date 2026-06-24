@@ -21,7 +21,6 @@ function buildCertificatePdf(d) {
     doc.registerFont('th', './Sarabun-Regular.ttf');
     doc.registerFont('th-bold', './Sarabun-Bold.ttf');
 
-
     const amount = Number(d.amount) || 0;
     const amountStr = amount.toLocaleString('th-TH', { minimumFractionDigits: 2 });
 
