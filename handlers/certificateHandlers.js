@@ -67,6 +67,7 @@ function buildCertificatePdf(d) {
     doc.font('th').fontSize(12).text(`รวมทั้งสิ้น (ตัวอักษร) ${bahttext(amount)}`);
     doc.moveDown(1);
     doc.text(`ข้าพเจ้า ${SHOP.issuer} (ผู้เบิกจ่าย)`);
+    doc.moveDown(1);
     doc.text(
       `ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ ` +
       `และข้าพเจ้าได้จ่ายไปในงานของทางร้านค้า/กิจการเจ้าของคนเดียวโดยแท้ ` +
