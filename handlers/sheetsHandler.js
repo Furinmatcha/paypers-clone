@@ -60,7 +60,7 @@ async function appendExpense(d) {
     d.date || '',
     d.txnId || '',
     'ใบรับรองแทนใบเสร็จ',
-    'จ่ายแลว',
+    'จ่ายแล้ว',
     d.description || '',
     1,
     amount,
