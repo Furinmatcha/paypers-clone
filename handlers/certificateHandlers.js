@@ -21,6 +21,17 @@ function buildCertificatePdf(d) {
     doc.registerFont('th', './Sarabun-Regular.ttf');
     doc.registerFont('th-bold', './Sarabun-Bold.ttf');
 
+    const THAI_MONTHS_FULL = [
+  'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+  'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'
+];
+
+function formatThaiDate(dateStr) {
+  const [day, month, year] = dateStr.split('/');
+  return `${parseInt(day)} ${THAI_MONTHS_FULL[parseInt(month)-1]} ${year}`;
+}
+
+
     const amount = Number(d.amount) || 0;
     const amountStr = amount.toLocaleString('th-TH', { minimumFractionDigits: 2 });
 
@@ -32,7 +43,7 @@ function buildCertificatePdf(d) {
     doc.text(`ที่อยู่: ${SHOP.address}`);
     doc.text(`เลขประจำตัวผู้เสียภาษี: ${SHOP.taxId}`);
     doc.text(`โทร: ${SHOP.tel}`);
-    doc.text(`วันที่: ${d.date}`, { align: 'right' });
+    doc.text(`วันที่: ${formatThaiDate(d.date)}`, { align: 'right' });
     doc.moveDown(1);
 
     const top = doc.y;
@@ -71,7 +82,7 @@ function buildCertificatePdf(d) {
     doc.text(
       `ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ ` +
       `และข้าพเจ้าได้จ่ายไปในงานของทางร้านค้า/กิจการเจ้าของคนเดียวโดยแท้ ` +
-      `ตังแต่วันที่ ${d.date} ถึงวันที่ ${d.date}`
+      `ตั้งแต่วันที่ ${formatThaiDate(d.date)} ถึงวันที่ ${formatThaiDate(d.date)}`
     );
     doc.moveDown(3);
 
