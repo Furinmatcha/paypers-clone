@@ -98,3 +98,35 @@ async function handleEvent(event, client) {
 }
 
 module.exports = { handleEvent }
+import { readReceipt } from './geminiHandler.js';
+import { buildFolderPath, uploadToDrive } from './driveHandler.js';
+import { buildCertificatePdf, mergeCertAndSlip } from './certificateHandler.js';
+import { appendExpense } from './sheetsHandler.js';
+
+async function handleReceipt(imageBuffer, reply) {
+  // 1. อ่านสลิป
+  const d = await readReceipt(imageBuffer);
+  d.txnId = 'TXN' + Date.now().toString(36);
+
+  // 2. สร้างโฟลเดอร์ (เฟส 2)
+  const { txnFolderId, accountingRoot } = await buildFolderPath(d.date, d.payee, d.txnId);
+
+  // 3. อัปสลิปเข้าโฟลเดอร์รายการ
+  const slipName = `${d.date.replaceAll('/','-')}_${d.payee}_${d.txnId}.jpg`;
+  d.evidenceLink = await uploadToDrive(imageBuffer, slipName, txnFolderId);
+
+  // 4. สร้างใบรับรอง PDF (เฟส 3) + อัปเข้าโฟลเดอร์รายการ
+  const certPdf = await buildCertificatePdf(d);
+  await uploadToDrive(certPdf, `ใบรับรอง_${d.txnId}.pdf`, txnFolderId, 'application/pdf');
+
+  // 5. รวม PDF (เฟส 4) + อัปเข้าโฟลเดอร์สำนักงานบัญชี
+  const mergedPdf = await mergeCertAndSlip(certPdf, imageBuffer);
+  await uploadToDrive(mergedPdf, `${slipName.replace('.jpg','')}_รวม.pdf`, accountingRoot, 'application/pdf');
+
+  // 6. บันทึก Sheet (เฟส 1)
+  const month = await appendExpense(d);
+
+  // 7. ตอบกลับ
+  await reply(`✅ บันทึกครบแล้ว (${month})\n${d.payee} — ${Number(d.amount).toLocaleString()}฿`);
+}
+
