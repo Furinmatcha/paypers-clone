@@ -14,14 +14,13 @@
     "@google/generative-ai": "^0.24.1",
     "@line/bot-sdk": "^11.0.2",
     "axios": "^1.18.0",
+    "bahttext": "^1.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "googleapis": "^173.0.0",
-    "pdfkit": "^0.15.0",
-    "bahttext": "^1.0.0",
-    "pdf-lib": "^1.17.1"
     "jimp": "^0.22.12",
-    "jsqr": "^1.4.0"
-
+    "jsqr": "^1.4.0",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.15.0"
   }
 }
