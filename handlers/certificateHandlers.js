@@ -1,5 +1,5 @@
 const PDFDocument = require('pdfkit');
-const { bahttext } = require('bahttext');
+const bahttext = require('bahttext');
 const { PDFDocument: LibPDF } = require('pdf-lib');
 
 const SHOP = {
