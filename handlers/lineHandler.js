@@ -12,9 +12,6 @@ const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
 });
 
-// เก็บ state การแก้ไขชั่วคราว
-const pendingEdits = {};
-
 async function handleEvent(event) {
   if (event.type !== 'message' || !event.source || !event.source.userId) {
     return;
@@ -22,7 +19,7 @@ async function handleEvent(event) {
   
   const userId = event.source.userId;
 
-  // กรณีผู้ใช้ส่งรูปภาพสลิปเข้ามา
+  // ขั้นตอนเดียวจบ: เมื่อผู้ใช้ส่งรูปภาพสลิปเข้ามา
   if (event.type === 'message' && event.message.type === 'image') {
     try {
       const response = await fetch(
@@ -34,121 +31,78 @@ async function handleEvent(event) {
 
       await client.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: 'text', text: '⏳ กำลังประมวลผล รอสักครู่...' }]
+        messages: [{ type: 'text', text: '⏳ กำลังประมวลผลข้อมูลสลิปสักครู่...' }]
       });
 
+      // ดึงข้อมูลจาก Gemini และ QR Code
       const d = await readReceipt(imageBuffer);
       
-      // สร้าง ID บิลด้วยฟอร์แมตหลักในโค้ดของคุณ (REC-XXXXXX)
-      d.receiptId = 'REC-' + Date.now().toString(36).toUpperCase();
-      d.imageBuffer = imageBuffer;
+      // สร้าง ID บิลและเตรียมพารามิเตอร์ส่งไปที่หน้าเว็บ
+      const receiptId = 'REC-' + Date.now().toString(36).toUpperCase();
+      
+      // แปลงข้อมูลที่อ่านได้เป็น URL Query Parameters เพื่อเอาไปแสดงบนหน้าเว็บฟอร์ม pureper
+      const queryParams = new URLSearchParams({
+        panel: 'edit',
+        receiptId: receiptId,
+        date: d.date || '',
+        payee: d.payee || '',
+        amount: d.amount || 0,
+        category: d.category || '',
+        subCategory: d.subCategory || '',
+        description: d.description || '',
+        openExternalBrowser: '1'
+      }).toString();
 
-      pendingEdits[userId] = { d, step: 'confirm' };
-
-      // ส่งผลลัพธ์ในการ์ดดีไซน์ Flex Message ตรวจสอบข้อมูลสลิป (รูปที่ 19)
+      // ส่งหน้าตาการ์ด Flex Message แจ้งผู้ใช้ให้กดเปิดหน้าเว็บไปตรวจและเซฟข้อมูล
       await client.pushMessage({
         to: userId,
         messages: [
           {
             type: 'flex',
-            altText: '🧾 ตรวจสอบข้อมูลสลิปโอนเงิน',
+            altText: '🧾 สแกนสลิปสำเร็จแล้ว',
             contents: {
               type: 'bubble',
               size: 'mega',
               header: {
                 type: 'box',
                 layout: 'vertical',
-                backgroundColor: '#27ae60',
-                contents: [
-                  {
-                    type: 'text',
-                    text: 'ตรวจสอบข้อมูลสลิป',
-                    weight: 'bold',
-                    color: '#ffffff',
-                    size: 'lg',
-                    align: 'center'
-                  }
-                ]
+                backgroundColor: '#f39c12',
+                contents: [{ type: 'text', text: 'สแกนสลิปสำเร็จ', weight: 'bold', color: '#ffffff', size: 'lg', align: 'center' }]
               },
               body: {
                 type: 'box',
                 layout: 'vertical',
                 spacing: 'md',
                 contents: [
+                  { type: 'text', text: 'ระบบอ่านข้อมูลเบื้องต้นเรียบร้อยแล้ว กรุณากดปุ่มด้านล่างเพื่อตรวจสอบความถูกต้องและกดบันทึกเข้าสู่ระบบบัญชีครับ', size: 'sm', color: '#666666', wrap: true },
+                  { type: 'separator', margin: 'md' },
                   {
                     type: 'box',
-                    layout: 'horizontal',
+                    layout: 'vertical',
+                    margin: 'md',
+                    spacing: 'sm',
                     contents: [
-                      { type: 'text', text: '📅 วันที่โอน:', color: '#8c8c8c', size: 'sm', flex: 2 },
-                      { type: 'text', text: `${d.date}`, weight: 'bold', size: 'sm', color: '#333333', flex: 4 }
-                    ]
-                  },
-                  { type: 'separator' },
-                  {
-                    type: 'box',
-                    layout: 'horizontal',
-                    contents: [
-                      { type: 'text', text: '👤 ผู้รับเงิน:', color: '#8c8c8c', size: 'sm', flex: 2 },
-                      { type: 'text', text: `${d.payee}`, weight: 'bold', size: 'sm', color: '#333333', flex: 4, wrap: true }
-                    ]
-                  },
-                  { type: 'separator' },
-                  {
-                    type: 'box',
-                    layout: 'horizontal',
-                    contents: [
-                      { type: 'text', text: '💰 จำนวนเงิน:', color: '#8c8c8c', size: 'sm', flex: 2 },
-                      { type: 'text', text: `${Number(d.amount).toLocaleString()} THB`, weight: 'bold', size: 'sm', color: '#27ae60', flex: 4 }
-                    ]
-                  },
-                  { type: 'separator' },
-                  {
-                    type: 'box',
-                    layout: 'horizontal',
-                    contents: [
-                      { type: 'text', text: '📝 รายละเอียด:', color: '#8c8c8c', size: 'sm', flex: 2 },
-                      { type: 'text', text: `${d.description || '-'}`, size: 'sm', color: '#555555', flex: 4, wrap: true }
-                    ]
-                  },
-                  { type: 'separator' },
-                  {
-                    type: 'box',
-                    layout: 'horizontal',
-                    contents: [
-                      { type: 'text', text: '📦 หมวดหมู่:', color: '#8c8c8c', size: 'sm', flex: 2 },
-                      { type: 'text', text: `${d.category} (${d.subCategory || '-'})`, size: 'sm', color: '#555555', flex: 4, wrap: true }
+                      { type: 'text', text: `👤 ผู้รับเงินเบื้องต้น: ${d.payee}`, size: 'sm', color: '#333333', weight: 'bold', wrap: true },
+                      { type: 'text', text: `💰 ยอดเงิน: ${Number(d.amount).toLocaleString()} THB`, size: 'sm', color: '#f39c12', weight: 'bold' }
                     ]
                   }
                 ]
               },
               footer: {
                 type: 'box',
-                layout: 'horizontal',
-                spacing: 'md',
+                layout: 'vertical',
                 contents: [
                   {
                     type: 'button',
-                    style: 'secondary',
+                    style: 'primary',
+                    color: '#f39c12',
                     height: 'sm',
                     action: {
                       type: 'uri',
-                      label: '✏️ แก้ไขข้อมูล',
-                      // ผูกกับค่า d.receiptId (ระบบ Payper) ไปหลัง URL อย่างสมบูรณ์แบบ
-                      uri: `https://liff.line.me/2008225018-p8njd0VK/businesses/cmq3i1jyh047as60e7j8xz1y9?panel=edit&receiptId=${d.receiptId}&openExternalBrowser=1`
-                    },
-                    flex: 1
-                  },
-                  {
-                    type: 'button',
-                    style: 'primary',
-                    color: '#27ae60',
-                    height: 'sm',
-                    action: {
-                      type: 'message',
-                      label: '💾 บันทึกข้อมูล',
-                      text: 'confirm_save'
-                    },
-                    flex: 1
+                      label: '✏️ ตรวจสอบ & บันทึกข้อมูลบน Pureper',
+                      // ยิงตรงเข้าหน้าเว็บแอปของคุณ พร้อมส่งค่าข้อมูลดิบไปกรอกในฟอร์มทันที ⚡
+                      uri: `https://liff.line.me/2008225018-p8njd0VK/businesses/cmq3i1jyh047as60e7j8xz1y9?${queryParams}`
+                    }
                   }
                 ]
               }
@@ -161,56 +115,17 @@ async function handleEvent(event) {
       console.error('Image error:', err);
       await client.pushMessage({
         to: userId,
-        messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาด กรุณาลองใหม่' }]
+        messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการประมวลผลรูปภาพ กรุณาลองใหม่' }]
       });
     }
   } 
   
-  // กรณีผู้ใช้ส่งข้อความ Text กลับมาโต้ตอบ (ปุ่มกดยืนยัน)
+  // จัดการข้อความทั่วไป
   else if (event.type === 'message' && event.message.type === 'text') {
-    const text = event.message.text.trim();
-    const state = pendingEdits[userId];
-
-    if (text === 'confirm_save' && state) {
-      try {
-        const d = state.d;
-        const imageBuffer = d.imageBuffer;
-        delete d.imageBuffer;
-
-        // ดึง receiptId ไปใช้ต่อในส่วนการเซฟลงไดรฟ์และคลาวด์
-        const txnFolderId = await builderFolderPath(d.date, d.payee, d.receiptId);
-        const slipName = `${d.date.replaceAll('/', '-')}_${d.payee}_${d.receiptId}.jpg`;
-        
-        const driveLink = await uploadToDrive(imageBuffer, slipName, txnFolderId);
-        d.evidenceLink = driveLink;
-
-        const certPdf = await buildCertificatePdf(d);
-        await uploadToDrive(certPdf, `ใบรับรอง_${d.receiptId}.pdf`, txnFolderId, 'application/pdf');
-
-        const mergedPdf = await mergeCertAndSlip(certPdf, imageBuffer);
-        const accountingRoot = 'your_accounting_root_folder_id'; 
-        await uploadToDrive(mergedPdf, `${slipName.replace('.jpg', '')}_FW.pdf`, accountingRoot, 'application/pdf');
-
-        const month = await appendExpense(d);
-        delete pendingEdits[userId];
-
-        await client.replyMessage({
-          replyToken: event.replyToken,
-          messages: [{ type: 'text', text: `✅ บันทึกครบแล้ว (${month}) \n👤 ${d.payee}\n📅 ${d.date}\n💰 ${Number(d.amount).toLocaleString()} บาท` }]
-        });
-      } catch (err) {
-        console.error('Save error:', err);
-        await client.replyMessage({
-          replyToken: event.replyToken,
-          messages: [{ type: 'text', text: '❌ บันทึกไม่สำเร็จ กรุณาลองใหม่' }]
-        });
-      }
-    } else {
-      await client.replyMessage({
-        replyToken: event.replyToken,
-        messages: [{ type: 'text', text: '🤖 ส่งรูปสลิปเพื่อบันทึกค่าใช้จ่ายได้เลยครับ' }]
-      });
-    }
+    await client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: 'text', text: '🤖 ยินดีต้อนรับครับ ส่งรูปภาพสลิปเงินเข้ามาเพื่อทำการบันทึกค่าใช้จ่ายได้เลยครับ!' }]
+    });
   }
 }
 
