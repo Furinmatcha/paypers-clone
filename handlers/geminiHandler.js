@@ -7,20 +7,26 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, {
 });
 
 function fixYear(dateStr) {
- if (!dateStr) return dateStr;
- const parts = dateStr.split('/');
- if (parts.length !== 3) return dateStr;
+  if (!dateStr) return dateStr;
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return dateStr;
 
- let year = parseInt(parts[2]);
+  let year = parseInt(parts[2]);
 
- if (year < 100) {
-   year = year + 1957; // 69 → 2026
- } else if (year > 2400) {
-   year = year - 543; // 2569 → 2026
- }
+  if (year > 2400) {
+    year = year - 543; // พ.ศ. → ค.ศ.
+  } else if (year < 100) {
+    year = year + 1957; // 2 หลัก → ค.ศ.
+  }
 
- parts[2] = year.toString();
- return parts.join('/');
+  // ถ้าผลลัพธ์ยังผิด (เช่น 2027 แทน 2026) ให้ใช้ปีปัจจุบัน
+  const currentYear = new Date().getFullYear();
+  if (year > currentYear + 1 || year < 2020) {
+    year = currentYear;
+  }
+
+  parts[2] = year.toString();
+  return parts.join('/');
 }
 
 async function decodeQR(imageBuffer) {
