@@ -92,7 +92,7 @@ async function readReceipt(imageBuffer) {
     },
   };
 
-  // 3. ระบบ Exponential Backoff ดักจับ High Demand (แทนที่บรรทัด 86-88 เดิม)
+    // 3. ระบบ Exponential Backoff ดักจับทั้ง 429 (High Demand) และ 503 (Service Unavailable)
   let result;
   let retries = 0;
   const maxRetries = 5;
@@ -103,19 +103,33 @@ async function readReceipt(imageBuffer) {
       break; // ยิงสำเร็จให้หลุดลูปทันที
     } catch (error) {
       retries++;
-      // ตรวจสอบว่าใช่ Error status 429 หรือข้อความ High Demand หรือไม่
-      if (error.status === 429 || error.message?.includes('429') || error.message?.includes('ResourceExhausted')) {
-        if (retries >= maxRetries) throw error; // ถ้าลองครบแล้วยังพังให้โยน error ออกไป
+      
+      // ดึงสถานะ Error ออกมาตรวจจับ
+      const status = error.status || error.statusCode;
+      const errorMessage = error.message || '';
+      
+      // เช็กว่าเป็น 429, 503 หรือข้อความตระกูล High Demand / Service Unavailable หรือไม่
+      const isRateLimitOrUnavailable = 
+        status === 429 || 
+        status === 503 || 
+        errorMessage.includes('429') || 
+        errorMessage.includes('503') || 
+        errorMessage.includes('ResourceExhausted') || 
+        errorMessage.includes('Service Unavailable');
+
+      if (isRateLimitOrUnavailable) {
+        if (retries >= maxRetries) throw error; // ถ้าพยายามจนครบกำหนดแล้วยังไม่รอด ให้โยน error ออกไป
         
-        // คำนวณเวลาที่ต้องรอ (2^attempt) + jitter เล็กน้อย
+        // สูตรเพิ่มเวลาหยุดรอแบบทวีคูณ (2^attempt) + random_jitter ป้องกันการยิงชนกัน
         const waitTime = Math.pow(2, retries) * 1000 + Math.random() * 1000;
-        console.warn(`[Gemini API] เจอ High Demand (429) กำลังลองใหม่ครั้งที่ ${retries}/${maxRetries} ในอีก ${(waitTime/1000).toFixed(2)} วินาที...`);
+        console.warn(`[Gemini API] เจอ Error ${status || 'High Demand'} กำลังลองใหม่ครั้งที่ ${retries}/${maxRetries} ในอีก ${(waitTime/1000).toFixed(2)} วินาที...`);
         await sleep(waitTime);
       } else {
-        throw error; // ถ้าเป็น Error อื่นๆ (เช่น 400, 500) ให้พ่นออกไปเลย ไม่ต้องรีไทร์
+        throw error; // ถ้าเป็น Error อื่นๆ เช่น สิทธิ์ใช้งานไม่ผ่าน (401/403) ให้พ่นออกไปเลย ไม่ต้องรีไทร์
       }
     }
   }
+
 
   const response = result.response;
 
