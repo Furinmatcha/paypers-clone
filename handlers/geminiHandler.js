@@ -80,6 +80,7 @@ async function readReceipt(imageBuffer) {
 - expenseType: ระบุเป็น "ต้นทุนขาย" หรือ "ค่าใช้จ่ายดำเนินงาน"
 - ช่องไหนที่ไม่มีข้อมูล หรืออ่านไม่ได้ ให้ใส่เป็น "" หรือ 0`;
 
+  // ทำการย่อขนาดและบีบอัดรูปภาพ
   const image = await Jimp.read(imageBuffer);
   if (image.getWidth() > 1024 || image.getHeight() > 1024) {
     image.scaleToFit(1024, 1024);
@@ -97,6 +98,7 @@ async function readReceipt(imageBuffer) {
   let retries = 0;
   const maxRetries = 5;
 
+  // ลูปจัดพฤติกรรมหลบเลี่ยง Error 429 และ 503
   while (retries < maxRetries) {
     try {
       result = await model.generateContent([prompt, imagePart]);
