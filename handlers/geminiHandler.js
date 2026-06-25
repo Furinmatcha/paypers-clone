@@ -30,6 +30,7 @@ function fixYear(dateStr) {
   return parts.join('/');
 }
 
+// ฟังก์ชันสแกน Mini QR Code บนสลิป (อัปเดตใหม่ให้แม่นยำและเสถียรกว่าเดิม)
 async function decodeQR(imageBuffer) {
   try {
     const image = await Jimp.read(imageBuffer);
@@ -38,7 +39,9 @@ async function decodeQR(imageBuffer) {
     if (!code) return null;
 
     const text = code.data;
-    const amountMatch = text.match(/54\d{2}(\d+\.?\d*)/);
+    
+    // ปรับปรุง Regex ใหม่เป็นระดับสากล ดักจับข้อมูลยอดเงิน (Tag 54) ของสลิปธนาคารไทยได้ครอบคลุมทุกค่าย
+    const amountMatch = text.match(/54\d{2}([0-9]+(\.[0-9]{2})?)/);
     if (amountMatch) {
       return parseFloat(amountMatch[1]);
     }
@@ -80,7 +83,7 @@ async function readReceipt(imageBuffer) {
 - expenseType: ระบุเป็น "ต้นทุนขาย" หรือ "ค่าใช้จ่ายดำเนินงาน"
 - ช่องไหนที่ไม่มีข้อมูล หรืออ่านไม่ได้ ให้ใส่เป็น "" หรือ 0`;
 
-  // ทำการย่อขนาดและบีบอัดรูปภาพ
+  // ทำการย่อขนาดและบีบอัดรูปภาพก่อนส่งเข้า API เพื่อความรวดเร็วและประหยัด bandwidth
   const image = await Jimp.read(imageBuffer);
   if (image.getWidth() > 1024 || image.getHeight() > 1024) {
     image.scaleToFit(1024, 1024);
@@ -98,7 +101,7 @@ async function readReceipt(imageBuffer) {
   let retries = 0;
   const maxRetries = 5;
 
-  // ลูปจัดพฤติกรรมหลบเลี่ยง Error 429 และ 503
+  // ลูปกลไก Retry แบบ Exponential Backoff เพื่อจัดการกับปัญหา Error 429 และ 503 ล่วงหน้า
   while (retries < maxRetries) {
     try {
       result = await model.generateContent([prompt, imagePart]);
@@ -132,11 +135,13 @@ async function readReceipt(imageBuffer) {
   raw = raw.replace(/```json|```/g, '').trim();
   const data = JSON.parse(raw);
 
+  // ตรวจเช็กและแก้ไข Format ปี พ.ศ. / ค.ศ. ให้ถูกต้อง
   data.date = fixYear(data.date);
 
+  // ดึงข้อมูลจำนวนเงินจาก Mini QR Code (ถ้ามีข้อมูลจาก QR จะนำมาเขียนทับยอดเงินที่ได้จาก AI ทันทีเพื่อความแม่นยำสูง)
   const qrAmount = await decodeQR(imageBuffer);
   if (qrAmount !== null) {
-    console.log(`QR amount: ${qrAmount} (Gemini: ${data.amount})`);
+    console.log(`[QR Match] ตรวจพบยอดเงินจาก QR Code: ${qrAmount} THB (ยึดตามค่านี้แทน AI)`);
     data.amount = qrAmount;
   }
 
