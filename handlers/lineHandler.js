@@ -9,48 +9,101 @@ const pendingEdits = {};
 async function handleEvent(event, client) {
   const userId = event.source.userId;
 
-  if (event.type === 'message' && event.message.type === 'image') {
-    try {
-      const response = await fetch(
-        `https://api-data.line.me/v2/bot/message/${event.message.id}/content`,
-        { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
-      );
-      const arrayBuffer = await response.arrayBuffer();
-      const imageBuffer = Buffer.from(arrayBuffer);
+// ... โค้ดด้านบนคงเดิม ...
+if (event.type === 'message' && event.message.type === 'image') {
+  try {
+    const response = await fetch(
+      `https://api-data.line.me/v2/bot/message/${event.message.id}/content`,
+      { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
+    );
+    const arrayBuffer = await response.arrayBuffer();
+    const imageBuffer = Buffer.from(arrayBuffer);
 
-      await client.replyMessage({
-        replyToken: event.replyToken,
-        messages: [{ type: 'text', text: '🔄 กำลังประมวลผล รอสักครู่...' }]
-      });
+    await client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: 'text', text: '⏳ กำลังประมวลผล รอสักครู่...' }]
+    });
 
-      const d = await readReceipt(imageBuffer);
-      d.txnId = 'TXN' + Date.now().toString(36);
-      d.imageBuffer = imageBuffer;
+    const d = await readReceipt(imageBuffer);
+    d.txnId = 'TXN-' + Date.now().toString(36);
+    d.imageBuffer = imageBuffer;
 
-      // เก็บ state รอ confirm
-      pendingEdits[userId] = { d, step: 'confirm' };
+    pendingEdits[userId] = { d, step: 'confirm' };
 
-      await client.pushMessage({
-        to: userId,
-        messages: [{
-          type: 'text',
-          text: `📋 ตรวจสอบข้อมูล\n🏪 ${d.payee}\n📅 ${d.date}\n💰 ${Number(d.amount).toLocaleString()}฿\n📝 ${d.description}\n🏷️ ${d.category}\n\nถูกต้องไหม?`,
-          quickReply: {
-            items: [
-              { type: 'action', action: { type: 'message', label: '✅ บันทึกเลย', text: 'confirm_save' } },
-              { type: 'action', action: { type: 'message', label: '✏️ แก้ไข', text: 'edit_receipt' } },
-            ]
+    // เปลี่ยนจากข้อความธรรมดา + quickReply เป็น Flex Message แบบปุ่มกดเปิด LIFF
+    await client.pushMessage({
+      to: userId,
+      messages: [
+        {
+          type: 'flex',
+          altText: 'สรุปบันทึกค่าใช้จ่าย',
+          contents: {
+            type: 'bubble',
+            body: {
+              type: 'box',
+              layout: 'vertical',
+              contents: [
+                { type: 'text', text: '✅ บันทึกค่าใช้จ่ายสำเร็จ', weight: 'bold', size: 'lg', color: '#27ae60' },
+                { type: 'separator', margin: 'md' },
+                {
+                  type: 'box',
+                  layout: 'vertical',
+                  margin: 'lg',
+                  spacing: 'sm',
+                  contents: [
+                    { type: 'text', text: `💰 จำนวนเงิน: ${Number(d.amount).toLocaleString()} THB`, weight: 'bold' },
+                    { type: 'text', text: `📅 วันที่: ${d.date}` },
+                    { type: 'text', text: `👤 ผู้รับเงิน/ร้านค้า: ${d.payee}` },
+                    { type: 'text', text: `📝 รายละเอียด: ${d.description || '-'}` },
+                    { type: 'text', text: `📦 หมวดหมู่: ${d.category} (${d.subCategory})` }
+                  ]
+                }
+              ]
+            },
+            footer: {
+              type: 'box',
+              layout: 'vertical',
+              spacing: 'sm',
+              contents: [
+                {
+                  type: 'button',
+                  style: 'link',
+                  height: 'sm',
+                  action: {
+                    type: 'uri',
+                    label: '✏️ แก้ไข',
+                    // นำข้อมูล URL และ receiptId (ใช้ txnId แทนชั่วคราวตามสถาปัตยกรรมโค้ดเดิม) มาประกอบเข้าด้วยกัน
+                    uri: `https://liff.line.me/2008225018-p8njd0VK/businesses/cmq3i1jyh047as60e7j8xz1y9?panel=edit&receiptId=${d.txnId}&openExternalBrowser=1`
+                  }
+                },
+                {
+                  type: 'button',
+                  style: 'primary',
+                  color: '#27ae60',
+                  height: 'sm',
+                  action: {
+                    type: 'message',
+                    label: '💾 บันทึกเลย',
+                    text: 'confirm_save'
+                  }
+                }
+              ]
+            }
           }
-        }]
-      });
+        }
+      ]
+    });
 
-    } catch (err) {
-      console.error('Image error:', err);
-      await client.pushMessage({
-        to: userId,
-        messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาด กรุณาลองใหม่' }]
-      });
-    }
+  } catch (err) {
+    console.error('Image error:', err);
+    await client.pushMessage({
+      to: userId,
+      messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาด กรุณาลองใหม่' }]
+    });
+  }
+}
+// ... โค้ดส่วนดักจับข้อความ (text) ด้านล่างคงเดิม ...
+
 
   } else if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
