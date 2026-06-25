@@ -6,6 +6,9 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, {
   apiVersion: 'v1'
 });
 
+// 1. เพิ่มฟังก์ชันหน่วงเวลาสำหรับ Backoff
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function fixYear(dateStr) {
   if (!dateStr) return dateStr;
   const parts = dateStr.split('/');
@@ -36,9 +39,9 @@ async function decodeQR(imageBuffer) {
     if (!code) return null;
 
     const text = code.data;
-    const amountMatch = text.match(/54(\d{2})(\d+\.?\d*)/);
+    const amountMatch = text.match(/54\d{2}(\d+\.?\d*)/);
     if (amountMatch) {
-      return parseFloat(amountMatch[2]);
+      return parseFloat(amountMatch[1]);
     }
     return null;
   } catch (err) {
@@ -50,8 +53,7 @@ async function decodeQR(imageBuffer) {
 async function readReceipt(imageBuffer) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
-  const prompt = `
-คุณคือผู้ช่วยอ่านสลิป/ใบเสร็จของร้านกาแฟ "ฟูริน มัทฉะ"
+  const prompt = `คุณคือผู้ช่วยอ่านสลิป/ใบเสร็จของร้านกาแฟ "ชูใจ มิตรภาพ"
 อ่านรูปแล้วตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น ห้ามมี markdown หรือ backtick
 
 รูปแบบ JSON:
@@ -69,22 +71,52 @@ async function readReceipt(imageBuffer) {
 กฎสำคัญ:
 - วันที่: ตอบเป็น ค.ศ. เท่านั้น DD/MM/YYYY
 - ปี 2 หลัก: 69 = 2026, 68 = 2025, 67 = 2024
-- ปี พ.ศ.: 2569 = 2026, 2568 = 2025 (ลบ 543)
+- พ.ศ.: 2569 = 2026, 2568 = 2025 (ลบ 543)
 - amount: ตัวเลขล้วน ไม่มีคอมม่า เช่น 38,000.00 = 38000
-- category: วัตถุดิบ, ค่าเช่า, อุปกรณ์, ค่าจ้าง, การตลาด, ค่าน้ำค่าไฟ, อื่นๆ
-- subCategory: หมวดย่อย เช่น ผงมัทฉะ, นม, แก้ว, ค่าเช่าร้าน
+- category: วัตถุดิบ, ค่าเช่า, อุปกรณ์, ค่าช่าง, การตลาด, ค่าน้ำค่าไฟ, อื่นๆ
+- subCategory: หมวดย่อย เช่น ผงมัทฉะ, นม, แก้ว, ค่าบริการ
 - expenseType: "ต้นทุนขาย" หรือ "ค่าใช้จ่ายดำเนินงาน"
-- ช่องไหนอ่านไม่ได้ ใส่ "" หรือ 0
-`;
+- ช่องไหนอ่านไม่ได้ ให้ใส่ "" หรือ 0`;
+
+  // 2. จัดการบีบอัดรูปภาพฝั่ง Client ก่อนส่ง (แทนที่บรรทัด 80-84 เดิม)
+  const image = await Jimp.read(imageBuffer);
+  if (image.getWidth() > 1024 || image.getHeight() > 1024) {
+    image.scaleToFit(1024, 1024); // ย่อขนาดลงมาให้ด้านยาวสุดไม่เกิน 1024px
+  }
+  const compressedBuffer = await image.quality(80).getBufferAsync(Jimp.MIME_JPEG); // บีบอัด Quality 80%
 
   const imagePart = {
     inlineData: {
-      data: imageBuffer.toString('base64'),
+      data: compressedBuffer.toString('base64'),
       mimeType: 'image/jpeg',
     },
   };
 
-  const result = await model.generateContent([prompt, imagePart]);
+  // 3. ระบบ Exponential Backoff ดักจับ High Demand (แทนที่บรรทัด 86-88 เดิม)
+  let result;
+  let retries = 0;
+  const maxRetries = 5;
+
+  while (retries < maxRetries) {
+    try {
+      result = await model.generateContent([prompt, imagePart]);
+      break; // ยิงสำเร็จให้หลุดลูปทันที
+    } catch (error) {
+      retries++;
+      // ตรวจสอบว่าใช่ Error status 429 หรือข้อความ High Demand หรือไม่
+      if (error.status === 429 || error.message?.includes('429') || error.message?.includes('ResourceExhausted')) {
+        if (retries >= maxRetries) throw error; // ถ้าลองครบแล้วยังพังให้โยน error ออกไป
+        
+        // คำนวณเวลาที่ต้องรอ (2^attempt) + jitter เล็กน้อย
+        const waitTime = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+        console.warn(`[Gemini API] เจอ High Demand (429) กำลังลองใหม่ครั้งที่ ${retries}/${maxRetries} ในอีก ${(waitTime/1000).toFixed(2)} วินาที...`);
+        await sleep(waitTime);
+      } else {
+        throw error; // ถ้าเป็น Error อื่นๆ (เช่น 400, 500) ให้พ่นออกไปเลย ไม่ต้องรีไทร์
+      }
+    }
+  }
+
   const response = result.response;
 
   let raw = response.text();
