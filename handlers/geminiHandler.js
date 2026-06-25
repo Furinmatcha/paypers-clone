@@ -6,7 +6,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, {
   apiVersion: 'v1'
 });
 
-// 1. เพิ่มฟังก์ชันหน่วงเวลาสำหรับ Backoff
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function fixYear(dateStr) {
@@ -53,83 +52,7 @@ async function decodeQR(imageBuffer) {
 async function readReceipt(imageBuffer) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
-  const prompt = `คุณคือผู้ช่วยอ่านสลิป/ใบเสร็จของร้านกาแฟ "ชูใจ มิตรภาพ"
-อ่านรูปแล้วตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น ห้ามมี markdown หรือ backtick
-
-รูปแบบ JSON:
-{
-  "date": "DD/MM/YYYY",
-  "payee": "ชื่อผู้รับเงิน (ช่องไปที่ หรือชื่อร้าน)",
-  "description": "สรุปสั้นๆ ว่าจ่ายค่าอะไร",
-  "amount": 0,
-  "taxId": "",
-  "expenseType": "",
-  "category": "",
-  "subCategory": ""
-}
-
-กฎสำคัญ:
-- วันที่: ตอบเป็น ค.ศ. เท่านั้น DD/MM/YYYY
-- ปี 2 หลัก: 69 = 2026, 68 = 2025, 67 = 2024
-- พ.ศ.: 2569 = 2026, 2568 = 2025 (ลบ 543)
-- amount: ตัวเลขล้วน ไม่มีคอมม่า เช่น 38,000.00 = 38000
-- category: วัตถุดิบ, ค่าเช่า, อุปกรณ์, ค่าช่าง, การตลาด, ค่าน้ำค่าไฟ, อื่นๆ
-- subCategory: หมวดย่อย เช่น ผงมัทฉะ, นม, แก้ว, ค่าบริการ
-- expenseType: "ต้นทุนขาย" หรือ "ค่าใช้จ่ายดำเนินงาน"
-- ช่องไหนอ่านไม่ได้ ให้ใส่ "" หรือ 0`;
-
-  // 2. จัดการบีบอัดรูปภาพฝั่ง Client ก่อนส่ง (แทนที่บรรทัด 80-84 เดิม)
-  const image = await Jimp.read(imageBuffer);
-  if (image.getWidth() > 1024 || image.getHeight() > 1024) {
-    image.scaleToFit(1024, 1024); // ย่อขนาดลงมาให้ด้านยาวสุดไม่เกิน 1024px
-  }
-  const compressedBuffer = await image.quality(80).getBufferAsync(Jimp.MIME_JPEG); // บีบอัด Quality 80%
-
-  const imagePart = {
-    inlineData: {
-      data: compressedBuffer.toString('base64'),
-      mimeType: 'image/jpeg',
-    },
-  };
-
-    // 3. ระบบ Exponential Backoff ดักจับทั้ง 429 (High Demand) และ 503 (Service Unavailable)
-  let result;
-  let retries = 0;
-  const maxRetries = 5;
-
-  while (retries < maxRetries) {
-    try {
-      result = await model.generateContent([prompt, imagePart]);
-      break; // ยิงสำเร็จให้หลุดลูปทันที
-    } catch (error) {
-      retries++;
-      
-      // ดึงสถานะ Error ออกมาตรวจจับ
-      const status = error.status || error.statusCode;
-      const errorMessage = error.message || '';
-      
-      // เช็กว่าเป็น 429, 503 หรือข้อความตระกูล High Demand / Service Unavailable หรือไม่
-      const isRateLimitOrUnavailable = 
-        status === 429 || 
-        status === 503 || 
-        errorMessage.includes('429') || 
-        errorMessage.includes('503') || 
-        errorMessage.includes('ResourceExhausted') || 
-        errorMessage.includes('Service Unavailable');
-
-      if (isRateLimitOrUnavailable) {
-        if (retries >= maxRetries) throw error; // ถ้าพยายามจนครบกำหนดแล้วยังไม่รอด ให้โยน error ออกไป
-        
-        // สูตรเพิ่มเวลาหยุดรอแบบทวีคูณ (2^attempt) + random_jitter ป้องกันการยิงชนกัน
-        const waitTime = Math.pow(2, retries) * 1000 + Math.random() * 1000;
-        console.warn(`[Gemini API] เจอ Error ${status || 'High Demand'} กำลังลองใหม่ครั้งที่ ${retries}/${maxRetries} ในอีก ${(waitTime/1000).toFixed(2)} วินาที...`);
-        await sleep(waitTime);
-      } else {
-        throw error; // ถ้าเป็น Error อื่นๆ เช่น สิทธิ์ใช้งานไม่ผ่าน (401/403) ให้พ่นออกไปเลย ไม่ต้องรีไทร์
-      }
-    }
-  }
-  const prompt = `คุณคือผู้ช่วยระบบ OCR อ่านสลิปโอนเงินธนาคารของไทยที่มีความแม่นยำสูงระดับขีดสุด
+  const prompt = `คุณคือผู้ช่วยระบบ OCR สำหรับสแกนสลิปโอนเงินธนาคารไทยที่มีความแม่นยำสูง
 อ่านรูปภาพสลิปแล้วสกัดข้อมูลเพื่อตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น ห้ามมี markdown หรือ backtick
 
 รูปแบบ JSON:
@@ -152,14 +75,57 @@ async function readReceipt(imageBuffer) {
 กฎการจัดฟอร์แมตข้อมูลอื่นๆ:
 - วันที่ (date): ตอบเป็น ค.ศ. เท่านั้นในรูปแบบ DD/MM/YYYY (เช่น 25 มิ.ย. 69 หรือ 25 มิ.ย. 2569 ให้แปลงปีเป็น 2026)
 - amount: ตัวเลขล้วน ไม่มีเครื่องหมายคอมม่าคั่น เช่น 20,000.00 ให้ตอบเป็น 20000
-- category: เลือกหมวดหมู่ที่ใกล้เคียงที่สุดจากกลุ่มนี้เท่านั้น: วัตถุดิบ, ค่าเช่า, อุปกรณ์, ค่าช่าง, การตลาด, ค่าน้ำค่าไฟ, อื่นๆ
+- category: เลือกหมวดหมู่จากกลุ่มนี้เท่านั้น: วัตถุดิบ, ค่าเช่า, อุปกรณ์, ค่าช่าง, การตลาด, ค่าน้ำค่าไฟ, อื่นๆ
 - subCategory: ระบุหมวดย่อยที่สอดคล้อง เช่น ผงมัทฉะ, นม, แก้ว, ค่าบริการ
 - expenseType: ระบุเป็น "ต้นทุนขาย" หรือ "ค่าใช้จ่ายดำเนินงาน"
-- ช่องไหนที่ไม่มีข้อมูลในสลิป หรืออ่านไม่ได้จริงๆ ให้ใส่เป็น "" หรือ 0`;
+- ช่องไหนที่ไม่มีข้อมูล หรืออ่านไม่ได้ ให้ใส่เป็น "" หรือ 0`;
 
+  const image = await Jimp.read(imageBuffer);
+  if (image.getWidth() > 1024 || image.getHeight() > 1024) {
+    image.scaleToFit(1024, 1024);
+  }
+  const compressedBuffer = await image.quality(80).getBufferAsync(Jimp.MIME_JPEG);
+
+  const imagePart = {
+    inlineData: {
+      data: compressedBuffer.toString('base64'),
+      mimeType: 'image/jpeg',
+    },
+  };
+
+  let result;
+  let retries = 0;
+  const maxRetries = 5;
+
+  while (retries < maxRetries) {
+    try {
+      result = await model.generateContent([prompt, imagePart]);
+      break;
+    } catch (error) {
+      retries++;
+      const status = error.status || error.statusCode;
+      const errorMessage = error.message || '';
+      
+      const isRateLimitOrUnavailable = 
+        status === 429 || 
+        status === 503 || 
+        errorMessage.includes('429') || 
+        errorMessage.includes('503') || 
+        errorMessage.includes('ResourceExhausted') || 
+        errorMessage.includes('Service Unavailable');
+
+      if (isRateLimitOrUnavailable) {
+        if (retries >= maxRetries) throw error;
+        const waitTime = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+        console.warn(`[Gemini API] Error ${status || 'Error'} ทำการรีไทร์รอบที่ ${retries}/${maxRetries} รออีก ${(waitTime/1000).toFixed(2)} วินาที...`);
+        await sleep(waitTime);
+      } else {
+        throw error;
+      }
+    }
+  }
 
   const response = result.response;
-
   let raw = response.text();
   raw = raw.replace(/```json|```/g, '').trim();
   const data = JSON.parse(raw);
