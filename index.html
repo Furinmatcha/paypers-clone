@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>แก้ไขรายจ่าย - Pureper</title>
+  <!-- นำเข้า Google Fonts ให้ฟอนต์สวยงาม -->
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Sarabun', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #f8f9fa;
+      color: #333;
+      padding: 15px;
+    }
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .header {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eeeeee;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    label span {
+      color: red;
+    }
+    input[type="text"], input[type="number"], select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cccccc;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #27ae60;
+    }
+    .btn-submit {
+      width: 100%;
+      background-color: #27ae60;
+      color: white;
+      border: none;
+      padding: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 15px;
+    }
+    .btn-submit:hover {
+      background-color: #219653;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">✏️ แก้ไขและตรวจสอบรายจ่าย</div>
+  
+  <form id="expenseForm">
+    <!-- ฟิลด์ซ่อน ID บิลไว้ -->
+    <input type="hidden" id="receiptId">
+
+    <div class="form-group">
+      <label>วันที่ออกใบเสร็จ <span>*</span></label>
+      <input type="text" id="date" placeholder="DD/MM/YYYY" required>
+    </div>
+
+    <div class="form-group">
+      <label>ผู้ขาย/ผู้ให้บริการ <span>*</span></label>
+      <input type="text" id="payee" required>
+    </div>
+
+    <div class="form-group">
+      <label>ยอดชำระ (THB) <span>*</span></label>
+      <input type="number" step="0.01" id="amount" required>
+    </div>
+
+    <div class="form-group">
+      <label>หมวดหมู่หลัก <span>*</span></label>
+      <select id="category" required>
+        <option value="วัตถุดิบ">วัตถุดิบ</option>
+        <option value="ค่าเช่า">ค่าเช่า</option>
+        <option value="อุปกรณ์">อุปกรณ์</option>
+        <option value="ค่าช่าง">ค่าช่าง</option>
+        <option value="การตลาด">การตลาด</option>
+        <option value="ค่าน้ำค่าไฟ">ค่าน้ำค่าไฟ</option>
+        <option value="อื่นๆ">อื่นๆ</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>หมวดหมู่ย่อย</label>
+      <input type="text" id="subCategory" placeholder="เช่น ผงมัทฉะ, แก้วพลาสติก">
+    </div>
+
+    <div class="form-group">
+      <label>รายละเอียดเพิ่มเติม</label>
+      <textarea id="description" rows="3" placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"></textarea>
+    </div>
+
+    <button type="submit" class="btn-submit">💾 บันทึกการเปลี่ยนแปลง</button>
+  </form>
+</div>
+
+<!-- โหลด LINE LIFF SDK -->
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+  // 1. แกะค่าจาก URL (Query Parameters) ที่บอตส่งมา แล้วเอาไปแสดงในฟอร์มทันที
+  const urlParams = new URLSearchParams(window.location.search);
+  document.getElementById('receiptId').value = urlParams.get('receiptId') || '';
+  document.getElementById('date').value = urlParams.get('date') || '';
+  document.getElementById('payee').value = urlParams.get('payee') || '';
+  document.getElementById('amount').value = urlParams.get('amount') || 0;
+  
+  const cat = urlParams.get('category');
+  if (cat) document.getElementById('category').value = cat;
+  
+  document.getElementById('subCategory').value = urlParams.get('subCategory') || '';
+  document.getElementById('description').value = urlParams.get('description') || '';
+
+  // 2. เริ่มทำงานกับระบบ LINE LIFF เพื่อจัดการตอนกดปุ่มบันทึก
+  async function initLiff() {
+    try {
+      // แนะนำให้กรอก LIFF ID ของคุณหลังจากลงทะเบียนใน LINE Developer แล้ว (สเต็ปถัดไป)
+      await liff.init({ liffId: "YOUR_LIFF_ID_HERE" }); 
+    } catch (error) {
+      console.error("LIFF การเชื่อมต่อล้มเหลว", error);
+    }
+  }
+  initLiff();
+
+  // 3. เมื่อผู้ใช้กดยืนยันเซฟฟอร์ม
+  document.getElementById('expenseForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // รวบรวมข้อมูลล่าสุดจากฟอร์มที่ผู้ใช้ปรับแก้แล้ว
+    const updatedData = {
+      action: 'save_edited_expense', // ยิงคำสั่งบอกบอต
+      receiptId: document.getElementById('receiptId').value,
+      date: document.getElementById('date').value,
+      payee: document.getElementById('payee').value,
+      amount: parseFloat(document.getElementById('amount').value),
+      category: document.getElementById('category').value,
+      subCategory: document.getElementById('subCategory').value,
+      description: document.getElementById('description').value
+    };
+
+    if (liff.isLoggedIn() || liff.isInClient()) {
+      // สั่งให้หน้าต่างนี้ "ส่งข้อความ (Text/Hidden Data)" กลับเข้าไปในห้องแชทของคนกดทันที
+      // เพื่อบอกบอตฝั่ง Node.js ให้เริ่มบันทึกข้อมูลลง Sheets จริง (ป้องกันข้อมูลซ้ำซ้อน)
+      try {
+        await liff.sendMessages([
+          {
+            type: 'text',
+            text: `CMD_SAVE_EXPENSE:${JSON.stringify(updatedData)}`
+          }
+        ]);
+        liff.closeWindow(); // บันทึกเสร็จ สั่งปิดหน้าต่างฟอร์มเด้งนี้ลงทันที สวยงาม!
+      } catch (err) {
+        alert('เกิดข้อผิดพลาดในการส่งข้อมูล: ' + err.message);
+      }
+    } else {
+      alert('กรุณาเปิดฟอร์มนี้ผ่านแอป LINE ครับ');
+    }
+  });
+</script>
+
+</body>
+</html>
