@@ -43,7 +43,7 @@ async function decodeQR(imageBuffer) {
 
 async function readReceipt(imageBuffer) {
   // ใช้โมเดลเวอร์ชันล่าสุดที่มีเสถียรภาพสูง
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
   const prompt = `คุณคือผู้เชี่ยวชาญ OCR สำหรับสแกนสลิปโอนเงินธนาคารไทยที่มีความแม่นยำสูงมาก
 อ่านข้อความในสลิปอย่างละเอียดตัวอักษรต่อตัวอักษร แล้วตอบกลับเป็น JSON เท่านั้น ห้ามมีข้อความอื่น ห้ามมี markdown หรือ backtick
