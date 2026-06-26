@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 const { Readable } = require('stream');
 
-// ยึดการใช้สิทธิ์ผ่าน GOOGLE_CREDENTIALS (Service Account) ตัวเดียวกับ Sheets
+// ใช้สิทธิ์ผ่าน GOOGLE_CREDENTIALS (Service Account) ตัวเดียวกับ Sheets
 const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 const auth = new google.auth.GoogleAuth({
   credentials,
@@ -15,6 +15,7 @@ const THAI_MONTHS = [
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
 ];
 
+// ฟังก์ชันภายในสำหรับค้นหาหรือสร้างโฟลเดอร์
 async function findOrCreateFolder(name, parentId) {
   const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
   
@@ -22,7 +23,6 @@ async function findOrCreateFolder(name, parentId) {
     q,
     fields: 'files(id, name)',
     spaces: 'drive',
-    // 🌟 ใส่ตรงนี้เพื่อบังคับให้ค้นหาในแชร์ไดรฟ์/โฟลเดอร์ที่แชร์มาได้ทั้งหมด
     supportsAllDrives: true,
     includeItemsFromAllDrives: true
   });
@@ -38,21 +38,22 @@ async function findOrCreateFolder(name, parentId) {
       parents: [parentId]
     },
     fields: 'id',
-    // 🌟 ใส่เพื่อให้ Service Account มีสิทธิ์สร้างกิ่งก้านโฟลเดอร์ลงไปได้
     supportsAllDrives: true
   });
 
   return folder.data.id;
 }
 
+// 🛠️ ฟังก์ชันสร้างโครงสร้างโฟลเดอร์ตาม วันที่ / ร้านค้า / เลขแทร็กกิ้ง
 async function buildFolderPath(dateStr, payee, txnId) {
   let day, month, year;
-  if (dateStr.includes('/')) {
+  
+  if (dateStr && dateStr.includes('/')) {
     const parts = dateStr.split('/');
     day = parts[0];
     month = parts[1];
     year = parts[2];
-  } else if (dateStr.includes('-')) {
+  } else if (dateStr && dateStr.includes('-')) {
     const parts = dateStr.split('-');
     day = parts[2];
     month = parts[1];
@@ -64,8 +65,9 @@ async function buildFolderPath(dateStr, payee, txnId) {
     year = String(now.getFullYear());
   }
 
-  const monthFolder = `${month}. ${THAI_MONTHS[parseInt(month) - 1]}`;
-  const txnFolderName = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}_${payee}_${txnId}`;
+  // ปรับเลขเดือนให้อยู่ในรูปแบบ "06. มิถุนายน"
+  const monthFolder = `${String(month).padStart(2, '0')}. ${THAI_MONTHS[parseInt(month) - 1]}`;
+  const txnFolderName = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}_${payee}_${txnId}`;
 
   const ROOT = process.env.GOOGLE_DRIVE_FOLDER_ID;
   
@@ -78,6 +80,7 @@ async function buildFolderPath(dateStr, payee, txnId) {
   return { txnFolderId, accountingRoot };
 }
 
+// 🛠️ ฟังก์ชันอัปโหลดไฟล์ และตั้งสิทธิ์ให้อ่านได้ผ่านลิงก์
 async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg') {
   const res = await drive.files.create({
     requestBody: {
@@ -89,11 +92,9 @@ async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg'
       body: Readable.from(buffer)
     },
     fields: 'id, webViewLink',
-    // 🌟 จุดสำคัญที่สุด: ใส่เพื่อให้มันไปกินพื้นที่โควตา (Storage) ของโฟลเดอร์ปลายทางที่เป็นของคุณ แทนการกินพื้นที่ของตัวเอง
     supportsAllDrives: true
   });
 
-  // ปรับสิทธิ์ให้เปิดดูไฟล์ได้ผ่านลิงก์
   await drive.permissions.create({
     fileId: res.data.id,
     requestBody: {
@@ -106,4 +107,5 @@ async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg'
   return res.data.webViewLink;
 }
 
+// Export ออกไปให้ไฟล์อื่นเรียกใช้ได้ตรง ๆ
 module.exports = { buildFolderPath, uploadToDrive };
