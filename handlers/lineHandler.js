@@ -1,6 +1,7 @@
 const { readReceipt } = require('./geminiHandler');
-// 🌟 เปลี่ยนมาดึงฟังก์ชันเซฟ Sheets ให้ตรงกับรูปแบบไฟล์จริงของคุณ (ถ้าของเก่าชื่อ writeToSheet)
-const writeToSheet = require('./sheetsHandler'); 
+// เปลี่ยนจาก writeToSheet ปกติ ให้มีปีกกาครอบ {} ล้อมรอบตัวฟังก์ชันตามโครงสร้างไฟล์จริง
+const { writeToSheet } = require('./sheetsHandler'); 
+
 
 // 🌟 ดึงฟังก์ชันจัดการโครงสร้างโฟลเดอร์ และอัปโหลดที่ใช้ Service Account + แก้เรื่อง Quota สำเร็จแล้ว
 const { buildFolderPath, uploadToDrive } = require('./driveHandler');
