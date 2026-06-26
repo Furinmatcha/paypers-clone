@@ -25,7 +25,7 @@ function formatThaiDate(dateStr) {
 }
 
 async function handleEvent(event) {
-  if (event.type !== 'message' || !event.source || !event.source.userId) {
+  if (!event || !event.source || !event.source.userId) {
     return;
   }
   
@@ -50,7 +50,7 @@ async function handleEvent(event) {
           updatedData.receiptId
         ]);
 
-        // แสดงผลลัพธ์การบันทึกสำเร็จ (กล่องสีเขียวอ่อนแบบที่คุณชอบ)
+        // แสดงผลลัพธ์การบันทึกสำเร็จ
         await client.pushMessage({
           to: userId,
           messages: [
@@ -109,6 +109,7 @@ async function handleEvent(event) {
   // 2. จังหวะผู้ใช้ส่งรูปสลิปเข้ามา
   else if (event.type === 'message' && event.message.type === 'image') {
     try {
+      // ดึง Image Buffer จาก LINE
       const response = await fetch(
         `https://api-data.line.me/v2/bot/message/${event.message.id}/content`,
         { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
@@ -116,11 +117,13 @@ async function handleEvent(event) {
       const arrayBuffer = await response.arrayBuffer();
       const imageBuffer = Buffer.from(arrayBuffer);
 
+      // ส่งข้อความแจ้งสถานะเบื้องต้น
       await client.replyMessage({
         replyToken: event.replyToken,
         messages: [{ type: 'text', text: '⏳ กำลังประมวลผลข้อมูลสลิปสักครู่...' }]
       });
 
+      // ส่งไปให้ Gemini อ่านข้อมูล
       const d = await readReceipt(imageBuffer);
       const receiptId = 'REC-' + Date.now().toString(36).toUpperCase();
       
@@ -134,7 +137,7 @@ async function handleEvent(event) {
         description: d.description || ''
       }).toString();
 
-      // การ์ดตรวจรับข้อมูลตัวใหม่: รายละเอียดจัดเต็ม สวยงามและครบถ้วน
+      // การ์ด Flex Message (ลบ verticalAlign ออกเรียบร้อยเพื่อป้องกัน Error 400)
       await client.pushMessage({
         to: userId,
         messages: [
@@ -153,7 +156,7 @@ async function handleEvent(event) {
                     type: 'box',
                     layout: 'horizontal',
                     contents: [
-                      { type: 'text', text: 'จำนวนเงิน', color: '#aa1111', size: 'sm', flex: 3, verticalAlign: 'center' },
+                      { type: 'text', text: 'จำนวนเงิน', color: '#aa1111', size: 'sm', flex: 3 },
                       { type: 'text', text: `${Number(d.amount).toLocaleString()} THB`, weight: 'bold', size: 'xl', color: '#000000', flex: 5, align: 'end' }
                     ]
                   },
@@ -249,14 +252,14 @@ async function handleEvent(event) {
 
     } catch (err) {
       console.error('Image processing error:', err);
-      // 🛠️ ส่วนที่เพิ่มเข้ามา: สั่งให้บอทแจ้งเตือนผู้ใช้สีแดงทันทีเมื่อระบบประมวลผลผิดพลาดหรือ API ค้าง
+      // เมื่อเกิดปัญหาใดๆ ขึ้น ระบบจะตกลงมาที่นี่และทำการแจ้งเตือนผู้ใช้ด้วยข้อความสีแดงทันที
       try {
         await client.pushMessage({
           to: userId,
-          messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการประมวลผลรูปภาพ กรุณาลองใหม่อีกครั้ง' }]
+          messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการประมวลผลรูปภาพ กรุณลองใหม่อีกครั้ง' }]
         });
       } catch (pushErr) {
-        console.error('Failed to send error message to user:', pushErr);
+        console.error('Failed to push error message to user:', pushErr);
       }
     }
   }
