@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 const { Readable } = require('stream');
 
-// 🌟 เปลี่ยนมาใช้สิทธิ์ผ่าน GOOGLE_CREDENTIALS (Service Account) ให้เหมือนกับ Sheets เคลียร์ปัญหา Default Credentials
+// ยึดการใช้สิทธิ์ผ่าน GOOGLE_CREDENTIALS (Service Account) ตัวเดียวกับ Sheets
 const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 const auth = new google.auth.GoogleAuth({
   credentials,
@@ -16,13 +16,15 @@ const THAI_MONTHS = [
 ];
 
 async function findOrCreateFolder(name, parentId) {
-  // สร้าง Query ค้นหาโฟลเดอร์ที่ไม่ถูกลบลงถังขยะ
   const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
   
   const res = await drive.files.list({
     q,
     fields: 'files(id, name)',
-    spaces: 'drive'
+    spaces: 'drive',
+    // 🌟 ใส่ตรงนี้เพื่อบังคับให้ค้นหาในแชร์ไดรฟ์/โฟลเดอร์ที่แชร์มาได้ทั้งหมด
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
   });
 
   if (res.data.files && res.data.files.length > 0) {
@@ -35,14 +37,15 @@ async function findOrCreateFolder(name, parentId) {
       mimeType: 'application/vnd.google-apps.folder',
       parents: [parentId]
     },
-    fields: 'id'
+    fields: 'id',
+    // 🌟 ใส่เพื่อให้ Service Account มีสิทธิ์สร้างกิ่งก้านโฟลเดอร์ลงไปได้
+    supportsAllDrives: true
   });
 
   return folder.data.id;
 }
 
 async function buildFolderPath(dateStr, payee, txnId) {
-  // รองรับรูปแบบวันที่ทั้งแบบ DD/MM/YYYY และ YYYY-MM-DD ให้ยืดหยุ่นปลอดภัย
   let day, month, year;
   if (dateStr.includes('/')) {
     const parts = dateStr.split('/');
@@ -55,7 +58,6 @@ async function buildFolderPath(dateStr, payee, txnId) {
     month = parts[1];
     year = parts[0];
   } else {
-    // กรณีฉุกเฉินดึงวันที่ปัจจุบันมาทำงานแทนไม่ให้โค้ดพัง
     const now = new Date();
     day = String(now.getDate()).padStart(2, '0');
     month = String(now.getMonth() + 1).padStart(2, '0');
@@ -86,16 +88,19 @@ async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg'
       mimeType: mimeType,
       body: Readable.from(buffer)
     },
-    fields: 'id, webViewLink'
+    fields: 'id, webViewLink',
+    // 🌟 จุดสำคัญที่สุด: ใส่เพื่อให้มันไปกินพื้นที่โควตา (Storage) ของโฟลเดอร์ปลายทางที่เป็นของคุณ แทนการกินพื้นที่ของตัวเอง
+    supportsAllDrives: true
   });
 
-  // ปรับสิทธิ์การเข้าถึงไฟล์ให้ทุกคนที่มีลิงก์สามารถดูได้อัตโนมัติ
+  // ปรับสิทธิ์ให้เปิดดูไฟล์ได้ผ่านลิงก์
   await drive.permissions.create({
     fileId: res.data.id,
     requestBody: {
       role: 'reader',
       type: 'anyone'
-    }
+    },
+    supportsAllDrives: true
   });
 
   return res.data.webViewLink;
