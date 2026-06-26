@@ -106,7 +106,7 @@ async function handleEvent(event) {
     }
   }
 
-  // 2. จังหวะผู้ใช้ส่งรูปสลิปเข้ามา (ดีไซน์ใหม่ถอดด้ามให้เต็มและละเอียดเหมือนรูปที่ 2)
+  // 2. จังหวะผู้ใช้ส่งรูปสลิปเข้ามา
   else if (event.type === 'message' && event.message.type === 'image') {
     try {
       const response = await fetch(
@@ -249,6 +249,15 @@ async function handleEvent(event) {
 
     } catch (err) {
       console.error('Image processing error:', err);
+      // 🛠️ ส่วนที่เพิ่มเข้ามา: สั่งให้บอทแจ้งเตือนผู้ใช้สีแดงทันทีเมื่อระบบประมวลผลผิดพลาดหรือ API ค้าง
+      try {
+        await client.pushMessage({
+          to: userId,
+          messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการประมวลผลรูปภาพ กรุณาลองใหม่อีกครั้ง' }]
+        });
+      } catch (pushErr) {
+        console.error('Failed to send error message to user:', pushErr);
+      }
     }
   }
 }
