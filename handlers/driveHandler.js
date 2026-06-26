@@ -81,6 +81,7 @@ async function buildFolderPath(dateStr, payee, txnId) {
 }
 
 // 🛠️ ฟังก์ชันอัปโหลดไฟล์ และตั้งสิทธิ์ให้อ่านได้ผ่านลิงก์
+// 🛠️ ฟังก์ชันอัปโหลดไฟล์
 async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg') {
   const res = await drive.files.create({
     requestBody: {
@@ -95,11 +96,12 @@ async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg'
     supportsAllDrives: true
   });
 
-  // 🌟 เอาโค้ดส่วน drive.permissions.create ออกทั้งหมด เพื่อไม่ให้ระเบิดความปลอดภัยของ Google Drive 🌟
-  // เพราะไฟล์อยู่ในโฟลเดอร์ที่แชร์ร่วมกันอยู่แล้ว นัทจะสามารถกดดูไฟล์ได้เองโดยตรงผ่านไดรฟ์ส่วนตัวครับ
-
   return res.data.webViewLink;
 }
+
+// Export ออกไปให้ไฟล์อื่นเรียกใช้ได้ตรง ๆ
+module.exports = { buildFolderPath, uploadToDrive };
+
 
   await drive.permissions.create({
     fileId: res.data.id,
