@@ -81,10 +81,13 @@ async function handleEvent(event) {
         await uploadToDrive(certPdfBuffer, 'ใบรับรองแทนใบเสร็จ.pdf', folders.txnFolderId, 'application/pdf');
 
         if (slipImageBuffer.length > 0) {
-          // รวมร่าง PDF ใบรับรอง + แปะรูปสลิปไว้หน้า 2 แล้วโยนเข้าโฟลเดอร์ "สำหรับสำนักงานบัญชี"
-          const combinedPdfBuffer = await mergeCertAndSlip(certPdfBuffer, slipImageBuffer);
-          await uploadToDrive(combinedPdfBuffer, `ใบรับรอง+สลิป_${txnId}.pdf', folders.accountingRoot, 'application/pdf');
+        // รวมร่าง PDF ใบรับรอง + แปะรูปสลิปไว้หน้า 2 แล้วโยนเข้าโฟลเดอร์ "สำหรับสำนักงานบัญชี"
+        const combinedPdfBuffer = await mergeCertAndSlip(certPdfBuffer, slipImageBuffer);
+  
+        // 🌟 แก้ไขเครื่องหมายตรงชื่อไฟล์ด้านล่างนี้ให้เป็น Backtick ทั้งคู่ครับ
+        await uploadToDrive(combinedPdfBuffer, `ใบรับรอง+สลิป_${txnId}.pdf`, folders.accountingRoot, 'application/pdf');
         }
+
 
         // เคลียร์ค่าแรมรูปภาพเมื่อทำงานเสร็จสิ้น
         global.currentSlipBuffer = null;
