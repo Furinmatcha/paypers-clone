@@ -44,7 +44,7 @@ async function findOrCreateFolder(name, parentId) {
   return folder.data.id;
 }
 
-// 🛠️ ฟังก์ชันสร้างโครงสร้างโฟลเดอร์ตาม วันที่ / ร้านค้า / เลขแทร็กกิ้ง
+// ฟังก์ชันสร้างโครงสร้างโฟลเดอร์ตาม วันที่ / ร้านค้า / เลขแทร็กกิ้ง
 async function buildFolderPath(dateStr, payee, txnId) {
   let day, month, year;
   
@@ -65,7 +65,6 @@ async function buildFolderPath(dateStr, payee, txnId) {
     year = String(now.getFullYear());
   }
 
-  // ปรับเลขเดือนให้อยู่ในรูปแบบ "06. มิถุนายน"
   const monthFolder = `${String(month).padStart(2, '0')}. ${THAI_MONTHS[parseInt(month) - 1]}`;
   const txnFolderName = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}_${payee}_${txnId}`;
 
@@ -80,8 +79,7 @@ async function buildFolderPath(dateStr, payee, txnId) {
   return { txnFolderId, accountingRoot };
 }
 
-// 🛠️ ฟังก์ชันอัปโหลดไฟล์ และตั้งสิทธิ์ให้อ่านได้ผ่านลิงก์
-// 🛠️ ฟังก์ชันอัปโหลดไฟล์
+// 🛠️ ฟังก์ชันอัปโหลดไฟล์ (แก้ไขเอาส่วน Permission เจ้าปัญหาออก และจัดระเบียบปีกกาให้ถูกต้อง)
 async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg') {
   const res = await drive.files.create({
     requestBody: {
@@ -93,28 +91,11 @@ async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg'
       body: Readable.from(buffer)
     },
     fields: 'id, webViewLink',
-    supportsAllDrives: true // บังคับใช้สิทธิ์และ Storage ของโฟลเดอร์ปลายทาง
-  });
-
-  return res.data.webViewLink;
-}
-
-
-// Export ออกไปให้ไฟล์อื่นเรียกใช้ได้ตรง ๆ
-module.exports = { buildFolderPath, uploadToDrive };
-
-
-  await drive.permissions.create({
-    fileId: res.data.id,
-    requestBody: {
-      role: 'reader',
-      type: 'anyone'
-    },
     supportsAllDrives: true
   });
 
   return res.data.webViewLink;
 }
 
-// Export ออกไปให้ไฟล์อื่นเรียกใช้ได้ตรง ๆ
+// ส่งออกฟังก์ชันให้ไฟล์อื่นดึงไปใช้งานได้ถูกต้อง
 module.exports = { buildFolderPath, uploadToDrive };
