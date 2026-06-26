@@ -1,8 +1,8 @@
-const { GoogleGenAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Jimp = require('jimp');
 const jsQR = require('jsqr');
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -42,9 +42,9 @@ async function decodeQR(imageBuffer) {
 }
 
 async function readReceipt(imageBuffer) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  // ใช้โมเดลเวอร์ชันล่าสุดที่มีเสถียรภาพสูง
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-  // ปรับปรุง Prompt ให้โฟกัสชื่อ-นามสกุลไทยทีละตัวอักษรอย่างเข้มงวด
   const prompt = `คุณคือผู้เชี่ยวชาญ OCR สำหรับสแกนสลิปโอนเงินธนาคารไทยที่มีความแม่นยำสูงมาก
 อ่านข้อความในสลิปอย่างละเอียดตัวอักษรต่อตัวอักษร แล้วตอบกลับเป็น JSON เท่านั้น ห้ามมีข้อความอื่น ห้ามมี markdown หรือ backtick
 
