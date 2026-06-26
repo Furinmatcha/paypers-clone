@@ -1,25 +1,24 @@
 const { readReceipt } = require('./geminiHandler');
-const { builderFolderPath, uploadToDrive } = require('./driveHandler');
-const { buildCertificatePdf, mergeCertAndSlip } = require('./certificateHandlers');
 const { appendExpense } = require('./sheetsHandler');
 
 const line = require('@line/bot-sdk');
-const config = {
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-};
 const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
 });
 
-// ฟังก์ชันแปลงรูปแบบวันที่ให้อ่านง่ายแบบไทย
+// ฟังก์ชันแปลงรูปแบบวันที่ให้เป็นภาษาไทยอ่านง่าย
 function formatThaiDate(dateStr) {
   try {
     if (!dateStr) return '-';
-    const date = new Date(dateStr);
-    if (isNaN(date)) return dateStr;
+    const parts = dateStr.split('/');
+    if (parts.length !== 3) return dateStr;
+    
+    const day = parseInt(parts[0]);
+    const monthIdx = parseInt(parts[1]) - 1;
+    const year = parseInt(parts[2]) + 543; // แปลงเป็น พ.ศ.
+    
     const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear() + 543}`;
+    return `${day} ${months[monthIdx]} ${year}`;
   } catch (e) {
     return dateStr;
   }
@@ -32,7 +31,7 @@ async function handleEvent(event) {
   
   const userId = event.source.userId;
 
-  // 1. ดักจับข้อมูลเมื่อกดบันทึกมาจาก LIFF
+  // 1. ดักจับข้อมูลตอนกดบันทึกมาจากหน้า LIFF
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text;
 
@@ -51,7 +50,7 @@ async function handleEvent(event) {
           updatedData.receiptId
         ]);
 
-        // การ์ดแสดงผลเมื่อบันทึกสำเร็จ (รูปที่ 2)
+        // แสดงผลลัพธ์การบันทึกสำเร็จ (กล่องสีเขียวอ่อนแบบที่คุณชอบ)
         await client.pushMessage({
           to: userId,
           messages: [
@@ -60,17 +59,38 @@ async function handleEvent(event) {
               altText: '✅ อัปเดตค่าใช้จ่ายสำเร็จ',
               contents: {
                 type: 'bubble',
+                size: 'mega',
                 body: {
                   type: 'box',
                   layout: 'vertical',
-                  backgroundColor: '#f1f9f4',
+                  backgroundColor: '#f4fbf7',
+                  cornerRadius: 'md',
+                  spacing: 'md',
                   contents: [
                     {
                       type: 'box',
                       layout: 'horizontal',
-                      alignment: 'center',
+                      spacing: 'sm',
                       contents: [
-                        { type: 'text', text: '✅ อัปเดตค่าใช้จ่ายสำเร็จ', weight: 'bold', color: '#27ae60', size: 'md' }
+                        { type: 'text', text: '✅', size: 'md', flex: 1 },
+                        { type: 'text', text: 'อัปเดตค่าใช้จ่ายสำเร็จ', weight: 'bold', color: '#27ae60', size: 'md', flex: 11 }
+                      ]
+                    },
+                    { type: 'separator', color: '#e2e2e2' },
+                    {
+                      type: 'box',
+                      layout: 'horizontal',
+                      contents: [
+                        { type: 'text', text: 'จำนวนเงิน', color: '#8c8c8c', size: 'sm', flex: 3 },
+                        { type: 'text', text: `${Number(updatedData.amount).toLocaleString()} THB`, weight: 'bold', size: 'md', color: '#000000', flex: 5, align: 'end' }
+                      ]
+                    },
+                    {
+                      type: 'box',
+                      layout: 'horizontal',
+                      contents: [
+                        { type: 'text', text: 'ผู้ขาย/ร้านค้า', color: '#8c8c8c', size: 'sm', flex: 3 },
+                        { type: 'text', text: `${updatedData.payee}`, size: 'sm', color: '#333333', flex: 5, wrap: true }
                       ]
                     }
                   ]
@@ -80,13 +100,13 @@ async function handleEvent(event) {
           ]
         });
       } catch (err) {
-        console.error('Save error:', err);
+        console.error('Save from LIFF error:', err);
       }
       return;
     }
   }
 
-  // 2. จังหวะที่ผู้ใช้ส่งรูปสลิปเข้ามา (ปรับปรุงให้แสดงผลครบเหมือนรูป 2)
+  // 2. จังหวะผู้ใช้ส่งรูปสลิปเข้ามา (ดีไซน์ใหม่ถอดด้ามให้เต็มและละเอียดเหมือนรูปที่ 2)
   else if (event.type === 'message' && event.message.type === 'image') {
     try {
       const response = await fetch(
@@ -101,7 +121,6 @@ async function handleEvent(event) {
         messages: [{ type: 'text', text: '⏳ กำลังประมวลผลข้อมูลสลิปสักครู่...' }]
       });
 
-      // สแกนสลิปด้วย Gemini 
       const d = await readReceipt(imageBuffer);
       const receiptId = 'REC-' + Date.now().toString(36).toUpperCase();
       
@@ -115,7 +134,7 @@ async function handleEvent(event) {
         description: d.description || ''
       }).toString();
 
-      // ส่งหน้าตาการ์ดตรวจรับข้อมูลชุดใหม่ที่มีรายละเอียดครบถ้วนแบบ รูปที่ 2
+      // การ์ดตรวจรับข้อมูลตัวใหม่: รายละเอียดจัดเต็ม สวยงามและครบถ้วน
       await client.pushMessage({
         to: userId,
         messages: [
@@ -134,7 +153,7 @@ async function handleEvent(event) {
                     type: 'box',
                     layout: 'horizontal',
                     contents: [
-                      { type: 'text', text: 'จำนวนเงิน', color: '#8c8c8c', size: 'sm', flex: 3, verticalAlign: 'center' },
+                      { type: 'text', text: 'จำนวนเงิน', color: '#aa1111', size: 'sm', flex: 3, verticalAlign: 'center' },
                       { type: 'text', text: `${Number(d.amount).toLocaleString()} THB`, weight: 'bold', size: 'xl', color: '#000000', flex: 5, align: 'end' }
                     ]
                   },
@@ -150,6 +169,14 @@ async function handleEvent(event) {
                     type: 'box',
                     layout: 'horizontal',
                     contents: [
+                      { type: 'text', text: 'ประเภทค่าใช้จ่าย', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: `🛍️ สินค้า`, size: 'sm', color: '#333333', flex: 5 }
+                    ]
+                  },
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    contents: [
                       { type: 'text', text: 'วันที่', color: '#8c8c8c', size: 'sm', flex: 3 },
                       { type: 'text', text: `${formatThaiDate(d.date)}`, size: 'sm', color: '#333333', flex: 5 }
                     ]
@@ -159,7 +186,7 @@ async function handleEvent(event) {
                     layout: 'horizontal',
                     contents: [
                       { type: 'text', text: 'หมวดหมู่', color: '#8c8c8c', size: 'sm', flex: 3 },
-                      { type: 'text', text: `${d.category || '-'}`, size: 'sm', color: '#333333', flex: 5 }
+                      { type: 'text', text: `${d.category || 'อื่นๆ'}`, size: 'sm', color: '#333333', flex: 5 }
                     ]
                   },
                   {
@@ -167,7 +194,15 @@ async function handleEvent(event) {
                     layout: 'horizontal',
                     contents: [
                       { type: 'text', text: 'หมวดหมู่ย่อย', color: '#8c8c8c', size: 'sm', flex: 3 },
-                      { type: 'text', text: `${d.subCategory || '-'}`, size: 'sm', color: '#333333', flex: 5 }
+                      { type: 'text', text: `${d.subCategory || 'ค่าใช้จ่ายเบ็ดเตล็ด'}`, size: 'sm', color: '#333333', flex: 5 }
+                    ]
+                  },
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    contents: [
+                      { type: 'text', text: 'ธุรกิจ', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: `ฟูริน มัทฉะ`, size: 'sm', color: '#333333', flex: 5 }
                     ]
                   },
                   {
