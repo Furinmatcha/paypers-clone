@@ -1,121 +1,132 @@
 const PDFDocument = require('pdfkit');
-const bahttext = require('bahttext');
-const { PDFDocument: LibPDF } = require('pdf-lib');
+const { PDFDocument: PDFLibDoc } = require('pdf-lib');
+const path = require('path');
 
-const SHOP = {
-  name: 'ฟูริน มัทฉะ',
-  address: '4/21 หมู่ 2 ติดอาคารซูเหลียน ตำบลเนินพระ อำเภอเมือง ระยอง 21000',
-  taxId: '1219900781992',
-  tel: '0946824466',
-  issuer: 'Terapat Pechtumpai',
-};
-
-function buildCertificatePdf(d) {
+// เฟส 3: ฟังก์ชันสร้างใบรับรองแทนใบเสร็จรับเงิน ตามโครงสร้างตัวอย่างใหม่
+function buildCertificatePdf(data, txnId) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const chunks = [];
-    doc.on('data', c => chunks.push(c));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
+    // กำหนดขนาดหน้า A4 ระยะขอบ 40 รอบด้านเพื่อให้มีพื้นที่วางข้อมูลตารางพอดี
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    let buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-    doc.registerFont('th', './Sarabun-Regular.ttf');
-    doc.registerFont('th-bold', './Sarabun-Bold.ttf');
+    // โหลดฟอนต์ภาษาไทยจากโฟลเดอร์ fonts
+    const fontPath = path.join(__dirname, '../fonts/THSarabunNew.ttf');
+    const fontBoldPath = path.join(__dirname, '../fonts/THSarabunNew_Bold.ttf');
 
-    const THAI_MONTHS_FULL = [
-  'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
-  'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'
-];
+    // --- ส่วนหัวเอกสาร (Header) ---
+    doc.font(fontBoldPath).size(14).text('ผู้ซื้อ/ผู้รับบริการ: ฟูริน มัทฉะ', { align: 'left' });
+    doc.moveDown(0.5);
+    doc.font(fontBoldPath).size(22).text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
+    doc.moveDown(0.5);
 
-function formatThaiDate(dateStr) {
-  const [day, month, year] = dateStr.split('/');
-  return `${parseInt(day)} ${THAI_MONTHS_FULL[parseInt(month)-1]} ${year}`;
-}
+    // รายละเอียดข้อมูลร้านฝั่งซ้าย และข้อมูลวันที่ฝั่งขวา
+    const startY = doc.y;
+    doc.font(fontPath).size(14);
+    doc.text('ที่อยู่: 4/21 หมู่ 2 ติดอาคารซูเหลียน ตำบล เนินพระ อำเภอเมือง ระยอง 21000');
+    doc.text('เลขประจำตัวผู้เสียภาษี: 1219900781992');
+    doc.text('โทร: 0946824466');
 
+    // วางวันที่และข้อมูลเลขที่เอกสารทางด้านขวาให้ขนานกัน
+    doc.text(`วันที่: ${data.thaiDateText || data.date}`, 380, startY, { align: 'right', width: 175 });
+    doc.text(`เลขที่เอกสาร: ${txnId}`, 380, startY + 16, { align: 'right', width: 175 });
 
-    const amount = Number(d.amount) || 0;
-    const amountStr = amount.toLocaleString('th-TH', { minimumFractionDigits: 2 });
+    doc.moveDown(2);
+    // ปรับพิกัดแกน X กลับมาที่ตำแหน่งเริ่มต้นปกติ (40)
+    const currentY = doc.y;
+    doc.x = 40; 
 
-    doc.font('th-bold').fontSize(20).text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
-    doc.moveDown(1);
+    // --- ส่วนตารางรายการ (Table) ---
+    // วาดเส้นหัวตาราง
+    doc.lineWidth(1).moveTo(40, currentY).lineTo(555, currentY).stroke();
+    doc.font(fontBoldPath).size(13);
+    doc.text('ลำดับ', 45, currentY + 6);
+    doc.text('รายละเอียด', 90, currentY + 6);
+    doc.text('จำนวนเงิน (บาท)', 380, currentY + 6, { width: 90, align: 'right' });
+    doc.text('หมายเหตุ', 490, currentY + 6);
+    
+    // วาดเส้นใต้หัวตาราง
+    doc.moveTo(40, currentY + 24).lineTo(555, currentY + 24).stroke();
 
-    doc.font('th').fontSize(12);
-    doc.text(`ผู้ซื้อ/ผู้รับบริการ: ${SHOP.name}`);
-    doc.text(`ที่อยู่: ${SHOP.address}`);
-    doc.text(`เลขประจำตัวผู้เสียภาษี: ${SHOP.taxId}`);
-    doc.text(`โทร: ${SHOP.tel}`);
-    doc.text(`วันที่: ${formatThaiDate(d.date)}`, { align: 'right' });
-    doc.moveDown(1);
+    // รายการข้อมูลค่าใช้จ่าย
+    doc.font(fontPath).size(13);
+    doc.text('1', 45, currentY + 32);
+    doc.text(`${data.description || data.subCategory || 'ค่าใช้จ่ายตามสลิป'}`, 90, currentY + 32, { width: 280 });
+    doc.text(`${Number(data.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 380, currentY + 32, { width: 90, align: 'right' });
+    doc.text('-', 490, currentY + 32);
 
-    const top = doc.y;
-    const cols = [50, 100, 380, 480, 545];
-    const rowH = 25;
+    // วาดเส้นปิดท้ายตารางรายการ
+    doc.moveTo(40, currentY + 60).lineTo(555, currentY + 60).stroke();
 
-    function cell(text, x1, x2, y, opt = {}) {
-      doc.text(text, x1 + 4, y + 6, { width: x2 - x1 - 8, ...opt });
-    }
+    // แสดงยอดรวมสุทธิ
+    doc.font(fontBoldPath).text('รวมทั้งสิ้น', 90, currentY + 66);
+    doc.text(`${Number(data.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 380, currentY + 66, { width: 90, align: 'right' });
+    
+    // วาดเส้นปิดยอดรวมสัดส่วนท้ายตาราง
+    doc.moveTo(40, currentY + 84).lineTo(555, currentY + 84).stroke();
+    doc.moveDown(1.5);
 
-    doc.rect(cols[0], top, cols[4]-cols[0], rowH).stroke();
-    doc.font('th-bold').fontSize(11);
-    cell('ลำดับ', cols[0], cols[1], top, { align: 'center' });
-    cell('รายละเอียด', cols[1], cols[2], top);
-    cell('จำนวนเงิน', cols[2], cols[3], top, { align: 'center' });
-    cell('หมายเหตุ', cols[3], cols[4], top, { align: 'center' });
+    // จำนวนเงินตัวอักษร
+    doc.font(fontBoldPath).size(13).text(`รวมทั้งสิ้น (ตัวอักษร)   ${data.amountCharText || '-'}`, 45);
+    doc.moveDown(1.5);
 
-    const r1 = top + rowH;
-    doc.rect(cols[0], r1, cols[4]-cols[0], rowH).stroke();
-    doc.font('th').fontSize(11);
-    cell('1', cols[0], cols[1], r1, { align: 'center' });
-    cell(d.description || '-', cols[1], cols[2], r1);
-    cell(amountStr, cols[2], cols[3], r1, { align: 'right' });
-
-    const r2 = r1 + rowH;
-    doc.rect(cols[0], r2, cols[4]-cols[0], rowH).stroke();
-    cell('รวมทั้งสิ้น', cols[1], cols[2], r2, { align: 'right' });
-    cell(amountStr, cols[2], cols[3], r2, { align: 'right' });
-
-    doc.y = r2 + rowH + 15;
-    doc.x = 50;
-    doc.font('th').fontSize(12).text(`รวมทั้งสิ้น (ตัวอักษร) ${bahttext(amount)}`);
-    doc.moveDown(1);
-    doc.text(`ข้าพเจ้า ${SHOP.issuer} (ผู้เบิกจ่าย)`);
-    doc.moveDown(1);
-    doc.text(
-      `ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ ` +
-      `และข้าพเจ้าได้จ่ายไปในงานของทางร้านค้า/กิจการเจ้าของคนเดียวโดยแท้ ` +
-      `ตั้งแต่วันที่ ${formatThaiDate(d.date)} ถึงวันที่ ${formatThaiDate(d.date)}`
-    );
+    // --- ส่วนคำรับรองและลายเซ็นด้านล่าง (Footer Signatures) ---
+    const userLogger = data.requesterName || 'Terapat Pechtumpai';
+    doc.font(fontPath).size(13).text(`ข้าพเจ้า  ${userLogger}  (ผู้เบิกจ่าย)`, 45);
+    doc.moveDown(0.5);
+    doc.text(`ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ และข้าพเจ้าได้จ่ายไปในงานของทาง`);
+    doc.text(`ร้านค้า/กิจการเจ้าของคนเดียว โดยแท้ ตั้งแต่วันที่ ${data.date} ถึงวันที่ ${data.date}`);
     doc.moveDown(3);
 
-    doc.text('____________________', 80, doc.y, { continued: true });
-    doc.text('____________________', { align: 'right' });
-    doc.text(`(${SHOP.issuer})`, 80, doc.y, { continued: true });
-    doc.text(`(${SHOP.issuer})`, { align: 'right' });
-    doc.text('ผู้เบิกจ่าย', 110, doc.y, { continued: true });
-    doc.text('ผู้อนุมัติ', { align: 'right' });
+    // จุดเซ็นชื่อฝั่งซ้าย (ผู้เบิกจ่าย) และฝั่งขวา (ผู้อนุมัติ)
+    const signY = doc.y;
+    doc.text(`(............................................................)`, 60, signY, { width: 200, align: 'center' });
+    doc.text(`( ${userLogger} )`, 60, signY + 16, { width: 200, align: 'center' });
+    doc.text('ผู้เบิกจ่าย', 60, signY + 32, { width: 200, align: 'center' });
+
+    doc.text(`(............................................................)`, 335, signY, { width: 200, align: 'center' });
+    doc.text(`( ${data.approverName || userLogger} )`, 335, signY + 16, { width: 200, align: 'center' });
+    doc.text('ผู้อนุมัติ', 335, signY + 32, { width: 200, align: 'center' });
 
     doc.end();
   });
 }
 
-async function mergeCertAndSlip(certPdf, slipImage) {
-  const merged = await LibPDF.create();
+// เฟส 4: ฟังก์ชันรวมเล่ม PDF คู่กับสลิปแบบดั้งเดิม (คงไว้ตามเดิม)
+async function mergeCertAndSlip(certPdfBuffer, slipImageBuffer) {
+  const mergedPdf = await PDFLibDoc.create();
 
-  const certDoc = await LibPDF.load(certPdf);
-  const pages = await merged.copyPages(certDoc, certDoc.getPageIndices());
-  pages.forEach(p => merged.addPage(p));
+  const certDoc = await PDFLibDoc.load(certPdfBuffer);
+  const copiedPages = await mergedPdf.copyPages(certDoc, certDoc.getPageIndices());
+  copiedPages.forEach((page) => mergedPdf.addPage(page));
 
-  const img = await merged.embedJpg(slipImage);
-  const page = merged.addPage();
-  const { width, height } = page.getSize();
-  const scale = Math.min(width / img.width, height / img.height) * 0.85;
-  page.drawImage(img, {
-    x: (width - img.width * scale) / 2,
-    y: (height - img.height * scale) / 2,
-    width: img.width * scale,
-    height: img.height * scale,
-  });
+  const page = mergedPdf.addPage([595.28, 841.89]); 
+  
+  let embeddedImage;
+  try {
+    embeddedImage = await mergedPdf.embedPng(slipImageBuffer);
+  } catch (e) {
+    try {
+      embeddedImage = await mergedPdf.embedJpg(slipImageBuffer);
+    } catch (jpgErr) {
+      console.error('Cannot embed image to PDF:', jpgErr);
+      return certPdfBuffer; 
+    }
+  }
 
-  return Buffer.from(await merged.save());
+  if (embeddedImage) {
+    const { width, height } = embeddedImage.scale(0.5);
+    page.drawImage(embeddedImage, {
+      x: (page.getWidth() - width) / 2,
+      y: (page.getHeight() - height) / 2,
+      width,
+      height
+    });
+  }
+
+  const mergedPdfBytes = await mergedPdf.save();
+  return Buffer.from(mergedPdfBytes);
 }
 
 module.exports = { buildCertificatePdf, mergeCertAndSlip };
