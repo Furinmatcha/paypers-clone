@@ -38,47 +38,44 @@ async function getOrCreateFolder(folderName, parentId = null) {
 }
 
 /**
- * ฟังก์ชันสร้าง Path โฟลเดอร์แยกชั้น: Root -> ปี -> เดือนภาษาไทย -> [รวมหลักฐาน / สำหรับสำนักงานบัญชี]
+ * 🌟 เปลี่ยนชื่อให้ตรงกับที่คุณทัก: จาก builderFolderPath เป็น createFolder
+ * ทำหน้าที่สร้างโครงสร้างโฟลเดอร์แบบ Tree แยกรายเดือนภาษาไทยตามเป้าหมาย
  */
-async function builderFolderPath(dateStr, payeeName, txnId) {
+async function createFolder(dateStr, payeeName, txnId) {
   const rootId = process.env.DRIVE_ROOT_FOLDER_ID;
 
-  // แยกวันที่จากรูปแบบ DD/MM/YYYY
   const parts = dateStr.split('/'); 
   const yearFolder = parts[2]; // "2026"
-  const monthIndex = parseInt(parts[1]) - 1; // แปลงลำดับเดือน (0-11)
+  const monthIndex = parseInt(parts[1]) - 1; 
   
-  // 🌟 อาร์เรย์ชื่อเดือนภาษาไทยแบบที่คุณต้องการ เพื่อใช้แยกโฟลเดอร์รายเดือน
   const months = [
     '01_มกราคม', '02_กุมภาพันธ์', '03_มีนาคม', '04_เมษายน', 
     '05_พฤษภาคม', '06_มิถุนายน', '07_กรกฎาคม', '08_สิงหาคม', 
     '09_กันยายน', '10_ตุลาคม', '11_พฤศจิกายน', '12_ธันวาคม'
   ];
-  const monthFolder = months[monthIndex]; // ดึงค่าออกมาเป็นเช่น "06_มิถุนายน"
+  const monthFolder = months[monthIndex]; // "06_มิถุนายน"
 
-  // 1. ตรวจสอบ/สร้าง โฟลเดอร์ "ปี" (เช่น 2026) ภายใต้ Root
+  // เจาะชั้นโฟลเดอร์ Year -> Month
   const yearId = await getOrCreateFolder(yearFolder, rootId);
-  
-  // 2. ตรวจสอบ/สร้าง โฟลเดอร์ "เดือนภาษาไทย" (เช่น 06_มิถุนายน) ภายใต้โฟลเดอร์ปี
   const monthId = await getOrCreateFolder(monthFolder, yearId);
 
-  // 3. สร้างโฟลเดอร์หลัก 2 ฝั่งแยกจากกัน ภายใต้โฟลเดอร์เดือนนั้นๆ
+  // สร้างโฟลเดอร์หลัก 2 ฝั่งแยกจากกัน
   const evidenceId = await getOrCreateFolder('รวมหลักฐาน', monthId);
   const accountingId = await getOrCreateFolder('สำหรับสำนักงานบัญชี', monthId);
 
-  // 4. สร้างโฟลเดอร์เฉพาะของรายการนั้นๆ ข้างใน "รวมหลักฐาน"
+  // สร้างโฟลเดอร์รายการย่อย
   const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; 
   const itemFolderName = `${formattedDate}_${payeeName.replace(/\s+/g, '_')}_${txnId}`;
   const itemFolderId = await getOrCreateFolder(itemFolderName, evidenceId);
 
-  // ส่งคืน ID เพื่อนำไปใช้อัปโหลดไฟล์ลงล็อคใน lineHandler
   return { itemFolderId, accountingId, itemFolderName };
 }
 
 /**
- * ฟังก์ชันอัปโหลดไฟล์ (Buffer) ขึ้น Drive
+ * 🌟 เปลี่ยนชื่อให้ตรงกับที่คุณทัก: จาก uploadToDrive เป็น uploadFile
+ * ยึดโครงสร้างสตรีมเดิม
  */
-async function uploadToDrive(buffer, filename, mimeType, parentId) {
+async function uploadFile(buffer, filename, mimeType, parentId) {
   const bufferStream = new stream.PassThrough();
   bufferStream.end(buffer);
 
@@ -101,4 +98,5 @@ async function uploadToDrive(buffer, filename, mimeType, parentId) {
   return file.data;
 }
 
-module.exports = { builderFolderPath, uploadToDrive };
+// คืนค่าชื่อฟังก์ชันส่งออก (Exports) ให้ตรงเป๊ะกับแบบเดิมที่คุณใช้ครับ!
+module.exports = { createFolder, uploadFile };
