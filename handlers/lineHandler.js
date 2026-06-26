@@ -1,9 +1,8 @@
 const { readReceipt } = require('./geminiHandler');
-// เปลี่ยนจาก writeToSheet ปกติ ให้มีปีกกาครอบ {} ล้อมรอบตัวฟังก์ชันตามโครงสร้างไฟล์จริง
-const { writeToSheet } = require('./sheetsHandler'); 
+// 🌟 แก้จุดนี้: แตกตัวแปรออกมาเป็น { appendExpense } ให้ตรงกับที่ sheetsHandler ส่งมา
+const { appendExpense } = require('./sheetsHandler');
 
-
-// 🌟 ดึงฟังก์ชันจัดการโครงสร้างโฟลเดอร์ และอัปโหลดที่ใช้ Service Account + แก้เรื่อง Quota สำเร็จแล้ว
+// 🌟 ดึงฟังก์ชันจัดการโครงสร้างโฟลเดอร์ และอัปโหลดที่ใช้ Service Account ของ Drive
 const { buildFolderPath, uploadToDrive } = require('./driveHandler');
 const { buildCertificatePdf, mergeCertAndSlip } = require('./certificateHandlers');
 
@@ -54,22 +53,17 @@ async function handleEvent(event) {
         const jsonStr = text.replace('CMD_SAVE_EXPENSE:', '');
         const updatedData = JSON.parse(jsonStr);
 
-        // ดึง Image Buffer ของสลิปที่เซฟค้างไว้ในหน่วยความจำตอนส่งรูปเข้ามา
+        // ดึง Image Buffer ของสลิปที่เซฟค้างไว้ในหน่วยความจำ
         const slipImageBuffer = global.currentSlipBuffer || Buffer.alloc(0); 
         const txnId = updatedData.receiptId || 'TXN-' + Date.now().toString(36).toUpperCase();
 
-        // 🟢 ส่วนที่ 1: บันทึกข้อมูลลง Google Sheets ด้วยฟังก์ชันหลักของคุณ
-        await writeToSheet([
-          updatedData.date,
-          updatedData.payee,
-          updatedData.amount,
-          updatedData.category,
-          updatedData.subCategory,
-          updatedData.description,
-          txnId
-        ]);
+        // แนบค่าเข้า Object เพื่อให้ sheetsHandler นำไปบันทึกลงคอลัมน์ได้ครบถ้วน
+        updatedData.receiptId = txnId;
 
-        // 🟢 ส่วนที่ 2: จัดสร้างโครงสร้างโฟลเดอร์ Google Drive (ปี -> เดือนภาษาไทย -> สองฝั่งบัญชี)
+        // 🟢 ส่วนที่ 1: เรียกใช้ appendExpense และส่งออบเจกต์เข้าไปตรง ๆ (แก้ปัญหา TypeError)
+        await appendExpense(updatedData);
+
+        // 🟢 ส่วนที่ 2: จัดสร้างโครงสร้างโฟลเดอร์ Google Drive
         const folders = await buildFolderPath(updatedData.date, updatedData.payee, txnId);
 
         // อัปโหลดไฟล์สลิปต้นฉบับลงโฟลเดอร์ฝั่ง "รวมหลักฐาน"
@@ -77,23 +71,19 @@ async function handleEvent(event) {
           await uploadToDrive(slipImageBuffer, 'สลิปดั้งเดิม.jpg', folders.txnFolderId, 'image/jpeg');
         }
 
-        // 🟢 ส่วนที่ 3: สร้างไฟล์ PDF ใบรับรองแทนใบเสร็จรับเงินรูปโฉมใหม่ และรวมเล่มส่งฝั่งสำนักงานบัญชี
+        // 🟢 ส่วนที่ 3: สร้างไฟล์ PDF ใบรับรองแทนใบเสร็จรับเงิน และรวมเล่มส่งฝั่งสำนักงานบัญชี
         const certPdfBuffer = await buildCertificatePdf(updatedData, txnId);
         await uploadToDrive(certPdfBuffer, 'ใบรับรองแทนใบเสร็จ.pdf', folders.txnFolderId, 'application/pdf');
 
         if (slipImageBuffer.length > 0) {
-        // รวมร่าง PDF ใบรับรอง + แปะรูปสลิปไว้หน้า 2 แล้วโยนเข้าโฟลเดอร์ "สำหรับสำนักงานบัญชี"
-        const combinedPdfBuffer = await mergeCertAndSlip(certPdfBuffer, slipImageBuffer);
-  
-        // 🌟 แก้ไขเครื่องหมายตรงชื่อไฟล์ด้านล่างนี้ให้เป็น Backtick ทั้งคู่ครับ
-        await uploadToDrive(combinedPdfBuffer, `ใบรับรอง+สลิป_${txnId}.pdf`, folders.accountingRoot, 'application/pdf');
+          const combinedPdfBuffer = await mergeCertAndSlip(certPdfBuffer, slipImageBuffer);
+          await uploadToDrive(combinedPdfBuffer, `ใบรับรอง+สลิป_${txnId}.pdf`, folders.accountingRoot, 'application/pdf');
         }
-
 
         // เคลียร์ค่าแรมรูปภาพเมื่อทำงานเสร็จสิ้น
         global.currentSlipBuffer = null;
 
-        // ตอบกลับ LINE แจ้งเตือนสเตตัสสีเขียวแบบสวยงาม (เอา verticalAlign ออกแล้ว)
+        // ตอบกลับ LINE แจ้งเตือนสเตตัสสำเร็จ
         await client.pushMessage({
           to: userId,
           messages: [
@@ -165,7 +155,6 @@ async function handleEvent(event) {
       const arrayBuffer = await response.arrayBuffer();
       const imageBuffer = Buffer.from(arrayBuffer);
 
-      // พักไฟล์รูปภาพเก็บไว้ใน Global Buffer รอจังหวะกดยืนยันจาก LIFF
       global.currentSlipBuffer = imageBuffer; 
 
       await client.replyMessage({
@@ -186,7 +175,6 @@ async function handleEvent(event) {
         description: d.description || ''
       }).toString();
 
-      // ส่งการ์ดส่งต่อไปหน้าจอตรวจสอบแก้ไขสลิปบน LIFF Pureper
       await client.pushMessage({
         to: userId,
         messages: [
