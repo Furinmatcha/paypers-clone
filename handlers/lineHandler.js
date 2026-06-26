@@ -12,6 +12,19 @@ const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
 });
 
+// ฟังก์ชันแปลงรูปแบบวันที่ให้อ่านง่ายแบบไทย
+function formatThaiDate(dateStr) {
+  try {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    if (isNaN(date)) return dateStr;
+    const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear() + 543}`;
+  } catch (e) {
+    return dateStr;
+  }
+}
+
 async function handleEvent(event) {
   if (event.type !== 'message' || !event.source || !event.source.userId) {
     return;
@@ -19,17 +32,15 @@ async function handleEvent(event) {
   
   const userId = event.source.userId;
 
-  // 1. ดักจับข้อมูลตอนที่กดปุ่ม "บันทึกข้อมูล" มาจากหน้าต่าง LINE LIFF
+  // 1. ดักจับข้อมูลเมื่อกดบันทึกมาจาก LIFF
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text;
 
     if (text.startsWith('CMD_SAVE_EXPENSE:')) {
       try {
-        // แกะข้อมูลที่ถูกส่งมาจากฟอร์ม LIFF
         const jsonStr = text.replace('CMD_SAVE_EXPENSE:', '');
         const updatedData = JSON.parse(jsonStr);
 
-        // ทำการบันทึกลง Google Sheets ทันที (บันทึกครั้งเดียวชัวร์ๆ ข้อมูลไม่ซ้ำ)
         await appendExpense([
           updatedData.date,
           updatedData.payee,
@@ -40,29 +51,42 @@ async function handleEvent(event) {
           updatedData.receiptId
         ]);
 
-        // ส่งการ์ดแจ้งเตือนกลับหาผู้ใช้ว่าบันทึกสำเร็จแล้ว
+        // การ์ดแสดงผลเมื่อบันทึกสำเร็จ (รูปที่ 2)
         await client.pushMessage({
           to: userId,
-          messages: [{ type: 'text', text: `✅ บันทึกค่าใช้จ่ายจำนวน ${Number(updatedData.amount).toLocaleString()} THB ลงระบบบัญชีเรียบร้อยแล้วครับ!` }]
+          messages: [
+            {
+              type: 'flex',
+              altText: '✅ อัปเดตค่าใช้จ่ายสำเร็จ',
+              contents: {
+                type: 'bubble',
+                body: {
+                  type: 'box',
+                  layout: 'vertical',
+                  backgroundColor: '#f1f9f4',
+                  contents: [
+                    {
+                      type: 'box',
+                      layout: 'horizontal',
+                      alignment: 'center',
+                      contents: [
+                        { type: 'text', text: '✅ อัปเดตค่าใช้จ่ายสำเร็จ', weight: 'bold', color: '#27ae60', size: 'md' }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
         });
       } catch (err) {
-        console.error('Save from LIFF error:', err);
-        await client.pushMessage({
-          to: userId,
-          messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในขณะบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง' }]
-        });
+        console.error('Save error:', err);
       }
-      return; // ทำงานเสร็จสิ้นย่อยนี้เรียบร้อย
+      return;
     }
-
-    // ข้อความต้อนรับปกติทั่วไป
-    await client.replyMessage({
-      replyToken: event.replyToken,
-      messages: [{ type: 'text', text: '🤖 ยินดีต้อนรับครับ ส่งรูปภาพสลิปเงินเข้ามาเพื่อทำการบันทึกค่าใช้จ่ายได้เลยครับ!' }]
-    });
   }
 
-  // 2. จังหวะที่ผู้ใช้ส่งรูปภาพสลิปเข้ามาในแชท LINE
+  // 2. จังหวะที่ผู้ใช้ส่งรูปสลิปเข้ามา (ปรับปรุงให้แสดงผลครบเหมือนรูป 2)
   else if (event.type === 'message' && event.message.type === 'image') {
     try {
       const response = await fetch(
@@ -77,11 +101,10 @@ async function handleEvent(event) {
         messages: [{ type: 'text', text: '⏳ กำลังประมวลผลข้อมูลสลิปสักครู่...' }]
       });
 
-      // สแกนสลิปด้วย Gemini
+      // สแกนสลิปด้วย Gemini 
       const d = await readReceipt(imageBuffer);
       const receiptId = 'REC-' + Date.now().toString(36).toUpperCase();
       
-      // มัดรวมข้อมูลส่งพ่วงไปตาม URL เพื่อนำไปหยอดใส่ฟอร์ม LIFF
       const queryParams = new URLSearchParams({
         receiptId: receiptId,
         date: d.date || '',
@@ -92,7 +115,7 @@ async function handleEvent(event) {
         description: d.description || ''
       }).toString();
 
-      // ส่งการ์ด Flex Message พร้อมปุ่มกดดึงหน้าต่าง LIFF ตัวจริงของคุณขึ้นมาทำงาน
+      // ส่งหน้าตาการ์ดตรวจรับข้อมูลชุดใหม่ที่มีรายละเอียดครบถ้วนแบบ รูปที่ 2
       await client.pushMessage({
         to: userId,
         messages: [
@@ -102,12 +125,6 @@ async function handleEvent(event) {
             contents: {
               type: 'bubble',
               size: 'mega',
-              header: {
-                type: 'box',
-                layout: 'vertical',
-                backgroundColor: '#27ae60',
-                contents: [{ type: 'text', text: 'สแกนสลิปสำเร็จ', weight: 'bold', color: '#ffffff', size: 'lg', align: 'center' }]
-              },
               body: {
                 type: 'box',
                 layout: 'vertical',
@@ -117,17 +134,58 @@ async function handleEvent(event) {
                     type: 'box',
                     layout: 'horizontal',
                     contents: [
-                      { type: 'text', text: '👤 ผู้รับเงิน:', color: '#8c8c8c', size: 'sm', flex: 2 },
-                      { type: 'text', text: `${d.payee}`, weight: 'bold', size: 'sm', color: '#333333', flex: 4, wrap: true }
+                      { type: 'text', text: 'จำนวนเงิน', color: '#8c8c8c', size: 'sm', flex: 3, verticalAlign: 'center' },
+                      { type: 'text', text: `${Number(d.amount).toLocaleString()} THB`, weight: 'bold', size: 'xl', color: '#000000', flex: 5, align: 'end' }
                     ]
                   },
-                  { type: 'separator' },
                   {
                     type: 'box',
                     layout: 'horizontal',
                     contents: [
-                      { type: 'text', text: '💰 ยอดเงิน:', color: '#8c8c8c', size: 'sm', flex: 2 },
-                      { type: 'text', text: `${Number(d.amount).toLocaleString()} THB`, weight: 'bold', size: 'sm', color: '#27ae60', flex: 4 }
+                      { type: 'text', text: 'ประเภทเอกสาร', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: 'สลิปโอนเงิน', size: 'sm', color: '#333333', flex: 5 }
+                    ]
+                  },
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    contents: [
+                      { type: 'text', text: 'วันที่', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: `${formatThaiDate(d.date)}`, size: 'sm', color: '#333333', flex: 5 }
+                    ]
+                  },
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    contents: [
+                      { type: 'text', text: 'หมวดหมู่', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: `${d.category || '-'}`, size: 'sm', color: '#333333', flex: 5 }
+                    ]
+                  },
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    contents: [
+                      { type: 'text', text: 'หมวดหมู่ย่อย', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: `${d.subCategory || '-'}`, size: 'sm', color: '#333333', flex: 5 }
+                    ]
+                  },
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    contents: [
+                      { type: 'text', text: 'รายละเอียด', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: `${d.description || '-'}`, size: 'sm', color: '#333333', flex: 5, wrap: true }
+                    ]
+                  },
+                  { type: 'separator', margin: 'md' },
+                  {
+                    type: 'box',
+                    layout: 'horizontal',
+                    margin: 'md',
+                    contents: [
+                      { type: 'text', text: 'ผู้ขาย/ร้านค้า', color: '#8c8c8c', size: 'sm', flex: 3 },
+                      { type: 'text', text: `${d.payee}`, weight: 'bold', size: 'sm', color: '#333333', flex: 5, wrap: true }
                     ]
                   }
                 ]
@@ -144,7 +202,6 @@ async function handleEvent(event) {
                     action: {
                       type: 'uri',
                       label: '✏️ ตรวจสอบ & บันทึกข้อมูลบน Pureper',
-                      // ผูกเข้ากับ LIFF ID ของคุณอย่างสมบูรณ์แบบแล้วครับ ⚡
                       uri: `https://liff.line.me/2010518180-uVA58w9J?${queryParams}`
                     }
                   }
@@ -156,11 +213,7 @@ async function handleEvent(event) {
       });
 
     } catch (err) {
-      console.error('Image error:', err);
-      await client.pushMessage({
-        to: userId,
-        messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการประมวลผลรูปภาพ กรุณาลองใหม่' }]
-      });
+      console.error('Image processing error:', err);
     }
   }
 }
