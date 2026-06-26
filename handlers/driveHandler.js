@@ -95,6 +95,12 @@ async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg'
     supportsAllDrives: true
   });
 
+  // 🌟 เอาโค้ดส่วน drive.permissions.create ออกทั้งหมด เพื่อไม่ให้ระเบิดความปลอดภัยของ Google Drive 🌟
+  // เพราะไฟล์อยู่ในโฟลเดอร์ที่แชร์ร่วมกันอยู่แล้ว นัทจะสามารถกดดูไฟล์ได้เองโดยตรงผ่านไดรฟ์ส่วนตัวครับ
+
+  return res.data.webViewLink;
+}
+
   await drive.permissions.create({
     fileId: res.data.id,
     requestBody: {
