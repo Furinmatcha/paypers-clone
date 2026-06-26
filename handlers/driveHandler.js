@@ -1,102 +1,104 @@
 const { google } = require('googleapis');
-const stream = require('stream');
+const { Readable } = require('stream');
 
+// 🌟 เปลี่ยนมาใช้สิทธิ์ผ่าน GOOGLE_CREDENTIALS (Service Account) ให้เหมือนกับ Sheets เคลียร์ปัญหา Default Credentials
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 const auth = new google.auth.GoogleAuth({
-  keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  credentials,
   scopes: ['https://www.googleapis.com/auth/drive']
 });
+
 const drive = google.drive({ version: 'v3', auth });
 
-/**
- * Helper ค้นหาโฟลเดอร์ ถ้าไม่มีให้สร้างทีละชั้น
- */
-async function getOrCreateFolder(folderName, parentId = null) {
-  let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-  if (parentId) {
-    query += ` and '${parentId}' in parents`;
-  }
+const THAI_MONTHS = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+];
 
-  const res = await drive.files.list({ q: query, fields: 'files(id, name)' });
+async function findOrCreateFolder(name, parentId) {
+  // สร้าง Query ค้นหาโฟลเดอร์ที่ไม่ถูกลบลงถังขยะ
+  const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
   
+  const res = await drive.files.list({
+    q,
+    fields: 'files(id, name)',
+    spaces: 'drive'
+  });
+
   if (res.data.files && res.data.files.length > 0) {
     return res.data.files[0].id;
   }
 
-  const fileMetadata = {
-    name: folderName,
-    mimeType: 'application/vnd.google-apps.folder'
-  };
-  if (parentId) {
-    fileMetadata.parents = [parentId];
-  }
-
   const folder = await drive.files.create({
-    resource: fileMetadata,
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentId]
+    },
     fields: 'id'
   });
+
   return folder.data.id;
 }
 
-/**
- * 🌟 เปลี่ยนชื่อให้ตรงกับที่คุณทัก: จาก builderFolderPath เป็น createFolder
- * ทำหน้าที่สร้างโครงสร้างโฟลเดอร์แบบ Tree แยกรายเดือนภาษาไทยตามเป้าหมาย
- */
-async function createFolder(dateStr, payeeName, txnId) {
-  const rootId = process.env.DRIVE_ROOT_FOLDER_ID;
+async function buildFolderPath(dateStr, payee, txnId) {
+  // รองรับรูปแบบวันที่ทั้งแบบ DD/MM/YYYY และ YYYY-MM-DD ให้ยืดหยุ่นปลอดภัย
+  let day, month, year;
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    day = parts[0];
+    month = parts[1];
+    year = parts[2];
+  } else if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    day = parts[2];
+    month = parts[1];
+    year = parts[0];
+  } else {
+    // กรณีฉุกเฉินดึงวันที่ปัจจุบันมาทำงานแทนไม่ให้โค้ดพัง
+    const now = new Date();
+    day = String(now.getDate()).padStart(2, '0');
+    month = String(now.getMonth() + 1).padStart(2, '0');
+    year = String(now.getFullYear());
+  }
 
-  const parts = dateStr.split('/'); 
-  const yearFolder = parts[2]; // "2026"
-  const monthIndex = parseInt(parts[1]) - 1; 
+  const monthFolder = `${month}. ${THAI_MONTHS[parseInt(month) - 1]}`;
+  const txnFolderName = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}_${payee}_${txnId}`;
+
+  const ROOT = process.env.GOOGLE_DRIVE_FOLDER_ID;
   
-  const months = [
-    '01_มกราคม', '02_กุมภาพันธ์', '03_มีนาคม', '04_เมษายน', 
-    '05_พฤษภาคม', '06_มิถุนายน', '07_กรกฎาคม', '08_สิงหาคม', 
-    '09_กันยายน', '10_ตุลาคม', '11_พฤศจิกายน', '12_ธันวาคม'
-  ];
-  const monthFolder = months[monthIndex]; // "06_มิถุนายน"
+  const yearId = await findOrCreateFolder(year, ROOT);
+  const monthId = await findOrCreateFolder(monthFolder, yearId);
+  const evidenceRoot = await findOrCreateFolder('รวมหลักฐาน', monthId);
+  const accountingRoot = await findOrCreateFolder('สำหรับสำนักงานบัญชี', monthId);
+  const txnFolderId = await findOrCreateFolder(txnFolderName, evidenceRoot);
 
-  // เจาะชั้นโฟลเดอร์ Year -> Month
-  const yearId = await getOrCreateFolder(yearFolder, rootId);
-  const monthId = await getOrCreateFolder(monthFolder, yearId);
-
-  // สร้างโฟลเดอร์หลัก 2 ฝั่งแยกจากกัน
-  const evidenceId = await getOrCreateFolder('รวมหลักฐาน', monthId);
-  const accountingId = await getOrCreateFolder('สำหรับสำนักงานบัญชี', monthId);
-
-  // สร้างโฟลเดอร์รายการย่อย
-  const formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; 
-  const itemFolderName = `${formattedDate}_${payeeName.replace(/\s+/g, '_')}_${txnId}`;
-  const itemFolderId = await getOrCreateFolder(itemFolderName, evidenceId);
-
-  return { itemFolderId, accountingId, itemFolderName };
+  return { txnFolderId, accountingRoot };
 }
 
-/**
- * 🌟 เปลี่ยนชื่อให้ตรงกับที่คุณทัก: จาก uploadToDrive เป็น uploadFile
- * ยึดโครงสร้างสตรีมเดิม
- */
-async function uploadFile(buffer, filename, mimeType, parentId) {
-  const bufferStream = new stream.PassThrough();
-  bufferStream.end(buffer);
-
-  const fileMetadata = { 
-    name: filename, 
-    parents: [parentId] 
-  };
-  
-  const media = { 
-    mimeType: mimeType, 
-    body: bufferStream 
-  };
-
-  const file = await drive.files.create({
-    resource: fileMetadata,
-    media: media,
+async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg') {
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      parents: [parentId]
+    },
+    media: {
+      mimeType: mimeType,
+      body: Readable.from(buffer)
+    },
     fields: 'id, webViewLink'
   });
-  
-  return file.data;
+
+  // ปรับสิทธิ์การเข้าถึงไฟล์ให้ทุกคนที่มีลิงก์สามารถดูได้อัตโนมัติ
+  await drive.permissions.create({
+    fileId: res.data.id,
+    requestBody: {
+      role: 'reader',
+      type: 'anyone'
+    }
+  });
+
+  return res.data.webViewLink;
 }
 
-// คืนค่าชื่อฟังก์ชันส่งออก (Exports) ให้ตรงเป๊ะกับแบบเดิมที่คุณใช้ครับ!
-module.exports = { createFolder, uploadFile };
+module.exports = { buildFolderPath, uploadToDrive };
