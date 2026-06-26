@@ -43,13 +43,13 @@ function buildCertificatePdf(data, txnId) {
     const thaiDateFormatted = parseToThaiDateStr(data.date);
 
     // --- ส่วนหัวเอกสาร (Header) ---
-    doc.font(fontBoldPath).size(14).text('ผู้ซื้อ/ผู้รับบริการ: ฟูริน มัทฉะ', 40, 40);
+    doc.font(fontBoldPath).fontsize(14).text('ผู้ซื้อ/ผู้รับบริการ: ฟูริน มัทฉะ', 40, 40);
     doc.moveDown(0.5);
-    doc.font(fontBoldPath).size(22).text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
+    doc.font(fontBoldPath).fontsize(22).text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
     doc.moveDown(0.5);
 
     const startY = doc.y;
-    doc.font(fontPath).size(14);
+    doc.font(fontPath).fontsize(14);
     doc.text('ที่อยู่: 4/21 หมู่ 2 ติดอาคารซูเหลียน ตำบล เนินพระ อำเภอเมือง ระยอง 21000', 40, startY, { width: 320 });
     doc.text('เลขประจำตัวผู้เสียภาษี: 1219900781992', 40, startY + 18);
     doc.text('โทร: 0946824466', 40, startY + 36);
@@ -62,7 +62,7 @@ function buildCertificatePdf(data, txnId) {
     // --- ส่วนตารางรายการ (Table) ---
     doc.lineWidth(1).moveTo(40, tableTop).lineTo(555, tableTop).stroke();
     
-    doc.font(fontBoldPath).size(13);
+    doc.font(fontBoldPath).fontsize(13);
     doc.text('ลำดับ', 45, tableTop + 6);
     doc.text('รายละเอียด', 90, tableTop + 6);
     doc.text('จำนวนเงิน (บาท)', 380, tableTop + 6, { width: 90, align: 'right' });
@@ -70,7 +70,7 @@ function buildCertificatePdf(data, txnId) {
     
     doc.lineWidth(1).moveTo(40, tableTop + 24).lineTo(555, tableTop + 24).stroke();
 
-    doc.font(fontPath).size(13);
+    doc.font(fontPath).fontsize(13);
     doc.text('1', 45, tableTop + 32);
     doc.text(`${data.description || data.subCategory || 'ค่าใช้จ่ายตามสลิป'}`, 90, tableTop + 32, { width: 280 });
     
@@ -88,10 +88,10 @@ function buildCertificatePdf(data, txnId) {
 
     // จำนวนเงินตัวอักษรและรายละเอียดคำรับรอง
     const noteY = tableBottom + 35;
-    doc.font(fontBoldPath).size(13).text(`รวมทั้งสิ้น (ตัวอักษร)   ${data.amountCharText || '-'}`, 45, noteY);
+    doc.font(fontBoldPath).fontsize(13).text(`รวมทั้งสิ้น (ตัวอักษร)   ${data.amountCharText || '-'}`, 45, noteY);
     
     const userLogger = data.requesterName || 'Terapat Pechtumpai';
-    doc.font(fontPath).size(13).text(`ข้าพเจ้า  ${userLogger}  (ผู้เบิกจ่าย)`, 45, noteY + 25);
+    doc.font(fontPath).fontsize(13).text(`ข้าพเจ้า  ${userLogger}  (ผู้เบิกจ่าย)`, 45, noteY + 25);
     
     // 🌟 ปรับปรุงการพิมพ์ข้อความยาวแบบยืดหยุ่น ย้ายพิกัดลงล็อกและใช้กล่องครอบข้อความแบบจำกัดขอบเขตอัตโนมัติ
     const longText = `ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ และข้าพเจ้าได้จ่ายไปในงานของทาง ร้านค้า/กิจการเจ้าของคนเดียว โดยแท้ ตั้งแต่วันที่ ${thaiDateFormatted} ถึงวันที่ ${thaiDateFormatted}`;
