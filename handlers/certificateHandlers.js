@@ -37,8 +37,8 @@ function buildCertificatePdf(data, txnId) {
     doc.on('end', () => resolve(Buffer.concat(buffers)));
 
     // โหลดฟอนต์ภาษาไทยจากโฟลเดอร์ fonts
-    const fontPath = path.join(__dirname, '../fonts/THSarabunNew.ttf');
-    const fontBoldPath = path.join(__dirname, '../fonts/THSarabunNew_Bold.ttf');
+    const fontPath = path.join(__dirname, '../THSarabunNew.ttf');
+    const fontBoldPath = path.join(__dirname, '../THSarabunNew_Bold.ttf');
 
     const thaiDateFormatted = parseToThaiDateStr(data.date);
 
