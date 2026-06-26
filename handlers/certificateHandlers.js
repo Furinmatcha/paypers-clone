@@ -2,18 +2,45 @@ const PDFDocument = require('pdfkit');
 const { PDFDocument: PDFLibDoc } = require('pdf-lib');
 const path = require('path');
 
-// เฟส 3: ฟังก์ชันสร้างใบรับรองแทนใบเสร็จรับเงิน ตามโครงสร้างตัวอย่างใหม่
+// ฟังก์ชันแปลงวันที่ภายในไฟล์ PDF ให้เสถียร (รองรับทั้ง 2026-06-05 และ 05/06/2026)
+function parseToThaiDateStr(dateStr) {
+  try {
+    if (!dateStr) return '-';
+    let parts = [];
+    if (dateStr.includes('/')) {
+      parts = dateStr.split('/'); // DD/MM/YYYY
+      const day = parseInt(parts[0]);
+      const monthIdx = parseInt(parts[1]) - 1;
+      const year = parseInt(parts[2]) + 543;
+      const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+      return `${day} ${months[monthIdx]} ${year}`;
+    } else if (dateStr.includes('-')) {
+      parts = dateStr.split('-'); // YYYY-MM-DD
+      const day = parseInt(parts[2]);
+      const monthIdx = parseInt(parts[1]) - 1;
+      const year = parseInt(parts[0]) + 543;
+      const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+      return `${day} ${months[monthIdx]} ${year}`;
+    }
+    return dateStr;
+  } catch (e) {
+    return dateStr;
+  }
+}
+
+// เฟส 3: ฟังก์ชันสร้างใบรับรองแทนใบเสร็จรับเงิน
 function buildCertificatePdf(data, txnId) {
   return new Promise((resolve, reject) => {
-    // กำหนดระยะขอบ 40 รอบด้านเพื่อให้พิกัดเสถียร
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
     let buffers = [];
     doc.on('data', buffers.push.bind(buffers));
     doc.on('end', () => resolve(Buffer.concat(buffers)));
 
     // โหลดฟอนต์ภาษาไทยจากโฟลเดอร์ fonts
-    const fontPath = path.join(__dirname, '../THSarabunNew.ttf');
-    const fontBoldPath = path.join(__dirname, '../THSarabunNew_Bold.ttf');
+    const fontPath = path.join(__dirname, '../fonts/THSarabunNew.ttf');
+    const fontBoldPath = path.join(__dirname, '../fonts/THSarabunNew_Bold.ttf');
+
+    const thaiDateFormatted = parseToThaiDateStr(data.date);
 
     // --- ส่วนหัวเอกสาร (Header) ---
     doc.font(fontBoldPath).size(14).text('ผู้ซื้อ/ผู้รับบริการ: ฟูริน มัทฉะ', 40, 40);
@@ -21,18 +48,15 @@ function buildCertificatePdf(data, txnId) {
     doc.font(fontBoldPath).size(22).text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
     doc.moveDown(0.5);
 
-    // เก็บคอนเทนต์ข้อมูลร้านและข้อมูลวันที่ให้อยู่ในระนาบที่ควบคุมได้
     const startY = doc.y;
     doc.font(fontPath).size(14);
     doc.text('ที่อยู่: 4/21 หมู่ 2 ติดอาคารซูเหลียน ตำบล เนินพระ อำเภอเมือง ระยอง 21000', 40, startY, { width: 320 });
     doc.text('เลขประจำตัวผู้เสียภาษี: 1219900781992', 40, startY + 18);
     doc.text('โทร: 0946824466', 40, startY + 36);
 
-    // วางข้อความฝั่งขวาให้ตรงล็อกคงที่ ไม่ใช้การขยับข้ามไปข้ามมา
-    doc.text(`วันที่: ${data.thaiDateText || data.date || '-'}`, 380, startY, { align: 'right', width: 175 });
+    doc.text(`วันที่: ${data.thaiDateText || thaiDateFormatted}`, 380, startY, { align: 'right', width: 175 });
     doc.text(`เลขที่เอกสาร: ${txnId}`, 380, startY + 18, { align: 'right', width: 175 });
 
-    // ขยับลงมาทำตารางรายการข้อมูล
     const tableTop = startY + 70;
 
     // --- ส่วนตารางรายการ (Table) ---
@@ -46,7 +70,6 @@ function buildCertificatePdf(data, txnId) {
     
     doc.lineWidth(1).moveTo(40, tableTop + 24).lineTo(555, tableTop + 24).stroke();
 
-    // ส่วนของเนื้อหาในตาราง
     doc.font(fontPath).size(13);
     doc.text('1', 45, tableTop + 32);
     doc.text(`${data.description || data.subCategory || 'ค่าใช้จ่ายตามสลิป'}`, 90, tableTop + 32, { width: 280 });
@@ -55,11 +78,9 @@ function buildCertificatePdf(data, txnId) {
     doc.text(`${formattedAmount}`, 380, tableTop + 32, { width: 90, align: 'right' });
     doc.text('-', 490, tableTop + 32);
 
-    // เส้นปิดท้ายรายการตาราง
     const tableBottom = tableTop + 60;
     doc.lineWidth(1).moveTo(40, tableBottom).lineTo(555, tableBottom).stroke();
 
-    // แสดงยอดรวมสุทธิ
     doc.font(fontBoldPath).text('รวมทั้งสิ้น', 90, tableBottom + 6);
     doc.text(`${formattedAmount}`, 380, tableBottom + 6, { width: 90, align: 'right' });
     
@@ -72,11 +93,12 @@ function buildCertificatePdf(data, txnId) {
     const userLogger = data.requesterName || 'Terapat Pechtumpai';
     doc.font(fontPath).size(13).text(`ข้าพเจ้า  ${userLogger}  (ผู้เบิกจ่าย)`, 45, noteY + 25);
     
-    const longText = `ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ และข้าพเจ้าได้จ่ายไปในงานของทาง ร้านค้า/กิจการเจ้าของคนเดียว โดยแท้ ตั้งแต่วันที่ ${data.date || '-'} ถึงวันที่ ${data.date || '-'}`;
+    // 🌟 ปรับปรุงการพิมพ์ข้อความยาวแบบยืดหยุ่น ย้ายพิกัดลงล็อกและใช้กล่องครอบข้อความแบบจำกัดขอบเขตอัตโนมัติ
+    const longText = `ขอรับรองว่า รายจ่ายข้างต้นนี้ไม่อาจเรียกเก็บใบเสร็จรับเงินจากผู้รับได้ และข้าพเจ้าได้จ่ายไปในงานของทาง ร้านค้า/กิจการเจ้าของคนเดียว โดยแท้ ตั้งแต่วันที่ ${thaiDateFormatted} ถึงวันที่ ${thaiDateFormatted}`;
     doc.text(longText, 45, noteY + 45, { width: 510, lineGap: 2 });
 
     // --- ส่วนคำรับรองและลายเซ็นด้านล่าง (Footer Signatures) ---
-    const signY = noteY + 110;
+    const signY = noteY + 115;
     
     doc.text(`(............................................................)`, 60, signY, { width: 200, align: 'center' });
     doc.text(`( ${userLogger} )`, 60, signY + 18, { width: 200, align: 'center' });
@@ -86,12 +108,11 @@ function buildCertificatePdf(data, txnId) {
     doc.text(`( ${data.approverName || userLogger} )`, 335, signY + 18, { width: 200, align: 'center' });
     doc.text('ผู้อนุมัติ', 335, signY + 34, { width: 200, align: 'center' });
 
-    // 🌟 ย้าย doc.end() มาไว้จุดสุดท้ายหลังจากมั่นใจว่าทุกอย่างวาดลง Object หมดแล้วอย่างปลอดภัย
     doc.end();
   });
 }
 
-// เฟส 4: ฟังก์ชันรวมเล่ม PDF คู่กับสลิปแบบดั้งเดิม (คงไว้ตามเดิม)
+// ฟังก์ชันรวมเล่ม PDF คู่กับสลิปแบบดั้งเดิม (คงเดิมไว้)
 async function mergeCertAndSlip(certPdfBuffer, slipImageBuffer) {
   const mergedPdf = await PDFLibDoc.create();
 
