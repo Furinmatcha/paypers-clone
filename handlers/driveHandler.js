@@ -93,11 +93,12 @@ async function uploadToDrive(buffer, fileName, parentId, mimeType = 'image/jpeg'
       body: Readable.from(buffer)
     },
     fields: 'id, webViewLink',
-    supportsAllDrives: true
+    supportsAllDrives: true // บังคับใช้สิทธิ์และ Storage ของโฟลเดอร์ปลายทาง
   });
 
   return res.data.webViewLink;
 }
+
 
 // Export ออกไปให้ไฟล์อื่นเรียกใช้ได้ตรง ๆ
 module.exports = { buildFolderPath, uploadToDrive };
