@@ -1,12 +1,14 @@
 const { readReceipt } = require('./geminiHandler');
 const { appendExpense } = require('./sheetsHandler');
+// 🛠️ เชื่อมโยงเข้ากับฟังก์ชันใน drive และ certificate ด้วยชื่อที่ถูกต้อง
+const { createFolder, uploadFile } = require('./driveHandler');
+const { buildCertificatePdf, mergeCertAndSlip } = require('./certificateHandlers');
 
 const line = require('@line/bot-sdk');
 const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
 });
 
-// ฟังก์ชันแปลงรูปแบบวันที่ให้เป็นภาษาไทยอ่านง่าย
 function formatThaiDate(dateStr) {
   try {
     if (!dateStr) return '-';
@@ -15,7 +17,7 @@ function formatThaiDate(dateStr) {
     
     const day = parseInt(parts[0]);
     const monthIdx = parseInt(parts[1]) - 1;
-    const year = parseInt(parts[2]) + 543; // แปลงเป็น พ.ศ.
+    const year = parseInt(parts[2]) + 543;
     
     const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
     return `${day} ${months[monthIdx]} ${year}`;
@@ -31,7 +33,7 @@ async function handleEvent(event) {
   
   const userId = event.source.userId;
 
-  // 1. ดักจับข้อมูลตอนกดบันทึกมาจากหน้า LIFF
+  // 1. จังหวะกดบันทึกมาจากหน้า LIFF
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text;
 
@@ -40,6 +42,29 @@ async function handleEvent(event) {
         const jsonStr = text.replace('CMD_SAVE_EXPENSE:', '');
         const updatedData = JSON.parse(jsonStr);
 
+        // ดึง Image Buffer ของสลิปที่เก็บสำรองไว้ใน Global Memory ออกมาใช้งาน
+        const slipImageBuffer = global.currentSlipBuffer || Buffer.alloc(0); 
+        const txnId = updatedData.receiptId || 'TXN-' + Date.now().toString(36).toUpperCase();
+
+        // 🌟 สร้างแผนผังโฟลเดอร์ตามโครงสร้าง ปี -> เดือนภาษาไทย -> รวมหลักฐาน/สำหรับสำนักงานบัญชี
+        const folders = await createFolder(updatedData.date, updatedData.payee, txnId);
+
+        // 🌟 เฟส 2: เซฟสลิปดั้งเดิมลงโฟลเดอร์รายการย่อย
+        if (slipImageBuffer.length > 0) {
+          await uploadFile(slipImageBuffer, 'สลิป.jpg', 'image/jpeg', folders.itemFolderId);
+        }
+
+        // 🌟 เฟส 3: สร้าง PDF ใบรับรองแทนใบเสร็จ แล้วบันทึกลงโฟลเดอร์รายการย่อย
+        const certPdfBuffer = await buildCertificatePdf(updatedData, txnId);
+        await uploadFile(certPdfBuffer, 'ใบรับรอง.pdf', 'application/pdf', folders.itemFolderId);
+
+        // 🌟 เฟส 4: มัดรวมใบรับรอง + รูปสลิป เป็นไฟล์เดียว ยิงเข้าโฟลเดอร์ "สำหรับสำนักงานบัญชี"
+        if (slipImageBuffer.length > 0) {
+          const combinedPdfBuffer = await mergeCertAndSlip(certPdfBuffer, slipImageBuffer);
+          await uploadFile(combinedPdfBuffer, `ใบรับรอง+สลิป_${txnId}.pdf`, 'application/pdf', folders.accountingId);
+        }
+
+        // บันทึกลงบัญชี Google Sheets ตามปกติ
         await appendExpense([
           updatedData.date,
           updatedData.payee,
@@ -47,16 +72,19 @@ async function handleEvent(event) {
           updatedData.category,
           updatedData.subCategory,
           updatedData.description,
-          updatedData.receiptId
+          txnId
         ]);
 
-        // แสดงผลลัพธ์การบันทึกสำเร็จ
+        // เคลียร์หน่วยความจำชั่วคราว
+        global.currentSlipBuffer = null;
+
+        // แจ้งเตือนบันทึกสำเร็จด้วยกล่องสีเขียว
         await client.pushMessage({
           to: userId,
           messages: [
             {
               type: 'flex',
-              altText: '✅ อัปเดตค่าใช้จ่ายสำเร็จ',
+              altText: '✅ บันทึกข้อมูลและจัดเก็บลง Drive สำเร็จ',
               contents: {
                 type: 'bubble',
                 size: 'mega',
@@ -73,7 +101,7 @@ async function handleEvent(event) {
                       spacing: 'sm',
                       contents: [
                         { type: 'text', text: '✅', size: 'md', flex: 1 },
-                        { type: 'text', text: 'อัปเดตค่าใช้จ่ายสำเร็จ', weight: 'bold', color: '#27ae60', size: 'md', flex: 11 }
+                        { type: 'text', text: 'บันทึกข้อมูลและจัดเก็บเอกสารสำเร็จ', weight: 'bold', color: '#27ae60', size: 'sm', flex: 11 }
                       ]
                     },
                     { type: 'separator', color: '#e2e2e2' },
@@ -100,16 +128,21 @@ async function handleEvent(event) {
           ]
         });
       } catch (err) {
-        console.error('Save from LIFF error:', err);
+        console.error('Save to Sheets and Drive error:', err);
+        try {
+          await client.pushMessage({
+            to: userId,
+            messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง' }]
+          });
+        } catch (msgErr) { console.error(msgErr); }
       }
       return;
     }
   }
 
-  // 2. จังหวะผู้ใช้ส่งรูปสลิปเข้ามา
+  // 2. จังหวะส่งรูปสลิปเข้ามาครั้งแรก
   else if (event.type === 'message' && event.message.type === 'image') {
     try {
-      // ดึง Image Buffer จาก LINE
       const response = await fetch(
         `https://api-data.line.me/v2/bot/message/${event.message.id}/content`,
         { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
@@ -117,13 +150,14 @@ async function handleEvent(event) {
       const arrayBuffer = await response.arrayBuffer();
       const imageBuffer = Buffer.from(arrayBuffer);
 
-      // ส่งข้อความแจ้งสถานะเบื้องต้น
+      // สำรองรูปสลิปเก็บไว้ชั่วคราวในระดับ Global Memory
+      global.currentSlipBuffer = imageBuffer; 
+
       await client.replyMessage({
         replyToken: event.replyToken,
         messages: [{ type: 'text', text: '⏳ กำลังประมวลผลข้อมูลสลิปสักครู่...' }]
       });
 
-      // ส่งไปให้ Gemini อ่านข้อมูล
       const d = await readReceipt(imageBuffer);
       const receiptId = 'REC-' + Date.now().toString(36).toUpperCase();
       
@@ -137,7 +171,7 @@ async function handleEvent(event) {
         description: d.description || ''
       }).toString();
 
-      // การ์ด Flex Message (ลบ verticalAlign ออกเรียบร้อยเพื่อป้องกัน Error 400)
+      // ส่งหน้าต่างตรวจสอบ (Flex Message) ให้กดยืนยันเข้าหน้า LIFF
       await client.pushMessage({
         to: userId,
         messages: [
@@ -172,14 +206,6 @@ async function handleEvent(event) {
                     type: 'box',
                     layout: 'horizontal',
                     contents: [
-                      { type: 'text', text: 'ประเภทค่าใช้จ่าย', color: '#8c8c8c', size: 'sm', flex: 3 },
-                      { type: 'text', text: `🛍️ สินค้า`, size: 'sm', color: '#333333', flex: 5 }
-                    ]
-                  },
-                  {
-                    type: 'box',
-                    layout: 'horizontal',
-                    contents: [
                       { type: 'text', text: 'วันที่', color: '#8c8c8c', size: 'sm', flex: 3 },
                       { type: 'text', text: `${formatThaiDate(d.date)}`, size: 'sm', color: '#333333', flex: 5 }
                     ]
@@ -190,22 +216,6 @@ async function handleEvent(event) {
                     contents: [
                       { type: 'text', text: 'หมวดหมู่', color: '#8c8c8c', size: 'sm', flex: 3 },
                       { type: 'text', text: `${d.category || 'อื่นๆ'}`, size: 'sm', color: '#333333', flex: 5 }
-                    ]
-                  },
-                  {
-                    type: 'box',
-                    layout: 'horizontal',
-                    contents: [
-                      { type: 'text', text: 'หมวดหมู่ย่อย', color: '#8c8c8c', size: 'sm', flex: 3 },
-                      { type: 'text', text: `${d.subCategory || 'ค่าใช้จ่ายเบ็ดเตล็ด'}`, size: 'sm', color: '#333333', flex: 5 }
-                    ]
-                  },
-                  {
-                    type: 'box',
-                    layout: 'horizontal',
-                    contents: [
-                      { type: 'text', text: 'ธุรกิจ', color: '#8c8c8c', size: 'sm', flex: 3 },
-                      { type: 'text', text: `ฟูริน มัทฉะ`, size: 'sm', color: '#333333', flex: 5 }
                     ]
                   },
                   {
@@ -252,15 +262,12 @@ async function handleEvent(event) {
 
     } catch (err) {
       console.error('Image processing error:', err);
-      // เมื่อเกิดปัญหาใดๆ ขึ้น ระบบจะตกลงมาที่นี่และทำการแจ้งเตือนผู้ใช้ด้วยข้อความสีแดงทันที
       try {
         await client.pushMessage({
           to: userId,
-          messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการประมวลผลรูปภาพ กรุณลองใหม่อีกครั้ง' }]
+          messages: [{ type: 'text', text: '❌ เกิดข้อผิดพลาดในการประมวลผลรูปภาพ กรุณาลองใหม่อีกครั้ง' }]
         });
-      } catch (pushErr) {
-        console.error('Failed to push error message to user:', pushErr);
-      }
+      } catch (pushErr) { console.error(pushErr); }
     }
   }
 }
