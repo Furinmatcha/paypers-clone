@@ -38,13 +38,13 @@ function buildCertificatePdf(data, txnId) {
     const description = data.description || data.subCategory || 'ค่าใช้จ่ายตามสลิป';
 
     // ชื่อเรื่องกลางหน้า
-    doc.font(fontBoldPath).fontSize(20)
+    doc.font(fontBoldPath).fontSize(16)
       .text('ใบรับรองแทนใบเสร็จรับเงิน', { align: 'center' });
     doc.moveDown(1.5);
 
     // ข้อมูลร้าน
     const infoY = doc.y;
-    doc.font(fontPath).fontSize(12);
+    doc.font(fontPath).fontSize(10);
     doc.text('ผู้ซือ/ผู้รับบริการ: ฟริน มัทฉะ', 60, infoY);
     doc.text('ที่อยู่: 4/21 หมู่ 2 ติดอาคารซูเหลียน ตำบล เนนพระ อำเภอเมือง ระยอง 21000', 60, infoY + 20);
     doc.text('เลขประจำตัวผู้เสียภาษี: 1219900781992', 60, infoY + 40);
@@ -70,7 +70,7 @@ function buildCertificatePdf(data, txnId) {
     doc.moveTo(col3x, tableTop).lineTo(col3x, tableTop + rowH).stroke();
     doc.moveTo(col4x, tableTop).lineTo(col4x, tableTop + rowH).stroke();
 
-    doc.font(fontBoldPath).fontSize(12);
+    doc.font(fontBoldPath).fontSize(10);
     doc.text('ลำดับ', col1x, tableTop + 6, { width: col2x - col1x, align: 'center' });
     doc.text('รายละเอียด', col2x, tableTop + 6, { width: col3x - col2x, align: 'center' });
     doc.text('จำนวนเงิน (บาท)', col3x, tableTop + 6, { width: col4x - col3x, align: 'center' });
@@ -83,7 +83,7 @@ function buildCertificatePdf(data, txnId) {
     doc.moveTo(col3x, row1Y).lineTo(col3x, row1Y + rowH).stroke();
     doc.moveTo(col4x, row1Y).lineTo(col4x, row1Y + rowH).stroke();
 
-    doc.font(fontPath).fontSize(12);
+    doc.font(fontPath).fontSize(10);
     doc.text('1', col1x, row1Y + 6, { width: col2x - col1x, align: 'center' });
     doc.text(description, col2x + 5, row1Y + 6, { width: col3x - col2x - 10 });
     doc.text(formattedAmount, col3x, row1Y + 6, { width: col4x - col3x - 5, align: 'right' });
@@ -94,14 +94,14 @@ function buildCertificatePdf(data, txnId) {
     doc.moveTo(col3x, row2Y).lineTo(col3x, row2Y + rowH).stroke();
     doc.moveTo(col4x, row2Y).lineTo(col4x, row2Y + rowH).stroke();
 
-    doc.font(fontBoldPath).fontSize(12);
+    doc.font(fontBoldPath).fontSize(10);
     doc.text('รวมทั้งสิ้น', col2x, row2Y + 6, { width: col3x - col2x - 5, align: 'right' });
     doc.text(formattedAmount, col3x, row2Y + 6, { width: col4x - col3x - 5, align: 'right' });
 
     // ส่วนล่างตาราง
     const belowTable = row2Y + rowH + 18;
 
-    doc.font(fontPath).fontSize(12);
+    doc.font(fontPath).fontSize(10);
     doc.text(`รวมทั้งสิน ( ตัวอักษร )  ${amountInWords}`, 60, belowTable);
     doc.moveDown(0.7);
     doc.text(`ข้าพเจ้า ${userLogger} (ผู้เบิกจ่าย)`);
@@ -117,14 +117,14 @@ doc.text(
     const sign1X = 80;
     const sign2X = 330;
 
-    doc.fontSize(12);
+    doc.fontSize(10);
     doc.text('____________________________', sign1X, signY, { width: 200, align: 'center' });
     doc.text('____________________________', sign2X, signY, { width: 200, align: 'center' });
 
     doc.text(`(${userLogger})`, sign1X, signY + 18, { width: 200, align: 'center' });
     doc.text(`(${data.approverName || userLogger})`, sign2X, signY + 18, { width: 200, align: 'center' });
 
-    doc.font(fontBoldPath).fontSize(12);
+    doc.font(fontBoldPath).fontSize(10);
     doc.text('ผู้เบิกจ่าย', sign1X, signY + 36, { width: 200, align: 'center' });
     doc.text('ผู้อนุมัติ', sign2X, signY + 36, { width: 200, align: 'center' });
 
